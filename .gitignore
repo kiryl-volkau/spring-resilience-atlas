@@ -1,0 +1,9 @@
+.idea/
+scanner/target/
+# Built by `mvn -f scanner/pom.xml package`; how releases ship it is still open (see README).
+scanner/dist/
+evals/results/
+# Work projects: the repository is public, so the corpus and the reviews that cite it stay local.
+evals/corpus.md
+sources/reviews/*.md
+.reliability/

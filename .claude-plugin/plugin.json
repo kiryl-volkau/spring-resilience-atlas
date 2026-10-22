@@ -1,0 +1,9 @@
+{
+  "name": "resilience-audit",
+  "version": "0.1.0",
+  "description": "Reliability audits for large Spring Boot applications: a deterministic atlas of entry points, then narrow evidence-backed audits per business flow.",
+  "author": {
+    "name": "Kiryl Volkau"
+  },
+  "keywords": ["spring", "spring-boot", "reliability", "resilience", "audit", "architecture"]
+}

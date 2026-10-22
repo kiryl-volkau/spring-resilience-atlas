@@ -1,0 +1,13 @@
+{
+  "name": "resilience-atlas",
+  "owner": {
+    "name": "Kiryl Volkau"
+  },
+  "plugins": [
+    {
+      "name": "resilience-audit",
+      "source": "./",
+      "description": "Reliability audits for large Spring Boot applications: a deterministic atlas of entry points, then narrow evidence-backed audits per business flow."
+    }
+  ]
+}
