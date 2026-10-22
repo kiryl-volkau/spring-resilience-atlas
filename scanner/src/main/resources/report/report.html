@@ -1,0 +1,1145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>__TITLE__ · Resilience report</title>
+<style>
+:root{
+  --bg:#f5f6f8;--surface:#ffffff;--surface-2:#f0f2f5;--border:#e1e4ea;--border-strong:#c3c9d3;
+  --text:#18202d;--muted:#535c6c;--faint:#646b78;--accent:#4338ca;--accent-weak:#eceefe;
+  --lv-high-fg:#ffffff;--lv-high-bg:#4c1d95;--lv-medium:#6d28d9;--lv-medium-bg:#ede9fe;--lv-low:#6a5a9e;
+  --bar-high:#4c1d95;--bar-medium:#8b5cf6;--bar-low:#c4b5fd;--bar-none:#dfe2e8;
+  --red:#c42b1c;--red-bg:#fdeceb;--amber:#8a5300;--amber-bg:#fdf3dc;--amber-bar:#d99a1e;--green:#176e30;--green-bg:#e6f4ea;--grey:#5b6472;--grey-bg:#eceef2;
+  --code-bg:#f2f3f6;--code-text:#283142;
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.06);
+  --radius:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1115;--surface:#171a20;--surface-2:#1e222a;--border:#2a2f39;--border-strong:#3d4350;
+    --text:#e6e8ec;--muted:#a7aebb;--faint:#8b93a2;--accent:#a5b4fc;--accent-weak:#23263a;
+    --lv-high-fg:#1e1433;--lv-high-bg:#c4b5fd;--lv-medium:#c4b5fd;--lv-medium-bg:#2b2343;--lv-low:#a99fd0;
+    --bar-high:#ddd6fe;--bar-medium:#8b5cf6;--bar-low:#4c3d7a;--bar-none:#2f343e;
+    --red:#ff8a80;--red-bg:#3a1d1b;--amber:#f2c14e;--amber-bg:#352a12;--amber-bar:#d9a43a;--green:#7ed69a;--green-bg:#183022;--grey:#a1a8b5;--grey-bg:#262a33;
+    --code-bg:#1d2129;--code-text:#d8dce3;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115;--surface:#171a20;--surface-2:#1e222a;--border:#2a2f39;--border-strong:#3d4350;
+  --text:#e6e8ec;--muted:#a7aebb;--faint:#8b93a2;--accent:#a5b4fc;--accent-weak:#23263a;
+  --lv-high-fg:#1e1433;--lv-high-bg:#c4b5fd;--lv-medium:#c4b5fd;--lv-medium-bg:#2b2343;--lv-low:#a99fd0;
+  --bar-high:#ddd6fe;--bar-medium:#8b5cf6;--bar-low:#4c3d7a;--bar-none:#2f343e;
+  --red:#ff8a80;--red-bg:#3a1d1b;--amber:#f2c14e;--amber-bg:#352a12;--amber-bar:#d9a43a;--green:#7ed69a;--green-bg:#183022;--grey:#a1a8b5;--grey-bg:#262a33;
+  --code-bg:#1d2129;--code-text:#d8dce3;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,"Cascadia Mono","Segoe UI Mono",Menlo,Consolas,monospace;font-size:12.5px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font:inherit;color:inherit}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+@media (max-width:640px){.wrap{padding:0 16px}}
+
+.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border)}
+.top-in{display:flex;align-items:center;gap:20px;height:52px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+.brand svg{flex:none}
+.toc{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1}
+.toc::-webkit-scrollbar{display:none}
+.toc a{color:var(--muted);padding:6px 10px;border-radius:8px;font-size:13px;white-space:nowrap}
+.toc a:hover{background:var(--surface-2);color:var(--text);text-decoration:none}
+.icon-btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;cursor:pointer;color:var(--muted);font-size:13px}
+.icon-btn:hover{color:var(--text);border-color:var(--border-strong)}
+@media (max-width:760px){.toc{display:none}.top-in{justify-content:space-between}}
+
+section{margin:32px 0}
+h1{font-size:28px;line-height:1.2;margin:2px 0 8px;letter-spacing:-.02em;font-weight:700;overflow-wrap:break-word}
+h2{font-size:20px;margin:0 0 4px;letter-spacing:-.01em;font-weight:680}
+h3{font-size:15px;margin:0 0 12px;font-weight:650}
+.eyebrow{margin:20px 0 0;color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.meta{color:var(--muted);margin:0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px}
+.meta code{background:var(--surface-2);padding:1px 6px;border-radius:5px}
+.lede{color:var(--muted);margin:0 0 16px;max-width:820px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;min-width:0}
+
+.callout{display:flex;gap:14px;align-items:flex-start;margin:16px 0;padding:16px 18px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow)}
+.callout .ico{flex:none;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--accent-weak);color:var(--accent)}
+.callout .headline{margin:2px 0 0;font-size:16px;line-height:1.45;max-width:960px}
+.callout .headline strong{font-weight:680}
+.callout .fine{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:960px}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:1000px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:360px){.kpis{grid-template-columns:1fr}}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.kpi .label{color:var(--muted);font-size:12.5px;font-weight:600}
+.kpi .value{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .value small{font-size:14px;font-weight:600;color:var(--muted);letter-spacing:0}
+.kpi .sub{color:var(--muted);font-size:12.5px}
+.kpi .pairs{display:flex;gap:16px;flex-wrap:wrap}
+.kpi .pairs div{display:flex;flex-direction:column}
+.kpi .pairs b{font-size:24px;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .pairs span{font-size:12px;color:var(--muted)}
+.kpi a{font-size:12.5px}
+@media (max-width:760px){.kpi .value{font-size:24px}.kpi .pairs b{font-size:20px}}
+.minibar{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--bar-none);margin-top:4px}
+.minibar span{display:block;height:100%}
+
+.lv{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:650;white-space:nowrap;border-radius:99px;padding:2px 9px 2px 7px;border:1px solid transparent}
+.lv i{display:inline-flex;gap:2px;align-items:flex-end;height:10px}
+.lv i b{display:block;width:3px;border-radius:1px;background:currentColor;opacity:.3}
+.lv i b:nth-child(1){height:5px}.lv i b:nth-child(2){height:8px}.lv i b:nth-child(3){height:11px}
+.lv.HIGH{color:var(--lv-high-fg);background:var(--lv-high-bg)}
+.lv.HIGH i b{opacity:1}
+.lv.MEDIUM{color:var(--lv-medium);background:var(--lv-medium-bg)}
+.lv.MEDIUM i b:nth-child(-n+2){opacity:1}
+.lv.LOW{color:var(--lv-low);background:transparent;border-color:color-mix(in srgb,var(--lv-low) 45%,transparent)}
+.lv.LOW i b:nth-child(1){opacity:1}
+.lv.NONE{color:var(--faint);background:transparent;border-color:var(--border)}
+.lv.NA{color:var(--faint);background:transparent;border:1px dashed var(--border-strong)}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:650;white-space:nowrap;border-radius:99px;padding:2px 9px}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.st.RED{color:var(--red);background:var(--red-bg)}
+.st.YELLOW{color:var(--amber);background:var(--amber-bg)}
+.st.GREEN{color:var(--green);background:var(--green-bg)}
+.st.GREY{color:var(--grey);background:var(--grey-bg)}
+tr.has-verdict .lv{background:transparent;color:var(--faint);border-color:var(--border)}
+
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+@media (max-width:860px){.cards{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card.click{cursor:pointer}
+.card.click:hover{border-color:var(--border-strong)}
+.card:focus-visible,.list tr.click:focus-visible,.th-sort:focus-visible,table.ops tr.op:focus-visible,.seg button:focus-visible,.linkbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card .row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card .title{font-weight:650}
+.card .op{font-weight:600;overflow-wrap:break-word}
+.card .handler{color:var(--muted);font-size:13px;overflow-wrap:break-word}
+.card .why{margin:0;color:var(--muted)}
+.card .why b{color:var(--text);font-weight:650}
+.affects{display:flex;flex-direction:column;gap:3px;padding-top:8px;border-top:1px solid var(--border)}
+.affects a{font-size:12.5px;overflow-wrap:break-word;color:var(--text)}
+.affects a:hover{color:var(--accent)}
+.affects a .verb{color:var(--muted)}
+.kind{display:inline-block;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:0 6px;line-height:18px;white-space:nowrap}
+.empty{padding:22px;border:1px dashed var(--border-strong);border-radius:var(--radius);color:var(--muted);background:var(--surface)}
+
+.split{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
+.split.single{grid-template-columns:minmax(0,1fr)}
+@media (max-width:960px){.split{grid-template-columns:1fr}}
+.list{width:100%;border-collapse:collapse}
+.list th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:0 8px 8px;border-bottom:1px solid var(--border)}
+.list td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle}
+.list tr:last-child td{border-bottom:0}
+.list td.n,.list th.n{text-align:right;font-variant-numeric:tabular-nums;width:1%;white-space:nowrap}
+.list tr.click{cursor:pointer}
+.list tr.click:hover td{background:var(--surface-2)}
+.list .t{font-weight:550}
+.bar{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--bar-none);min-width:90px}
+.bar span{display:block;height:100%}
+.b-HIGH{background:var(--bar-high)}.b-MEDIUM{background:var(--bar-medium)}.b-LOW{background:var(--bar-low)}.b-NONE{background:transparent}
+.b-NA{background:repeating-linear-gradient(45deg,var(--border-strong) 0 3px,transparent 3px 6px)}
+.b-RED{background:var(--red)}.b-YELLOW{background:var(--amber-bar)}.b-GREEN{background:var(--green)}.b-GREY{background:transparent}
+
+.toolbar{position:sticky;top:52px;z-index:10;background:var(--bg);padding:12px 0;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--border)}
+@media (max-width:760px){.toolbar{position:static}}
+.tb-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.search{flex:1 1 280px;position:relative}
+.search input{width:100%;height:36px;padding:0 12px 0 34px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font-size:14px}
+.search input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.search svg{position:absolute;left:11px;top:10px;color:var(--faint)}
+select{height:36px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);padding:0 8px;font-size:13px;max-width:220px}
+.seg-wrap{display:inline-flex;align-items:center;gap:8px;max-width:100%}
+.seg-wrap > .sub{white-space:nowrap}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;background:var(--surface);padding:2px;gap:2px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg button{border:0;background:transparent;border-radius:7px;height:30px;padding:0 10px;font-size:13px;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--accent-weak);color:var(--text);font-weight:600}
+.seg button .c{font-variant-numeric:tabular-nums;color:var(--faint);font-weight:500}
+.count{color:var(--muted);font-size:13px;margin-left:auto;white-space:nowrap}
+.linkbtn{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;font-size:13px}
+
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-top:12px;overflow-x:auto}
+table.ops{width:100%;border-collapse:collapse;table-layout:fixed;min-width:960px}
+table.ops th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap}
+.th-sort{all:unset;cursor:pointer}
+table.ops th:not([aria-sort]) .th-sort::after{content:" ↕";opacity:.35}
+table.ops th[aria-sort="ascending"] .th-sort::after{content:" ↑"}
+table.ops th[aria-sort="descending"] .th-sort::after{content:" ↓"}
+table.ops td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;min-width:0}
+table.ops tr.op{cursor:pointer}
+table.ops tr.op:hover td{background:var(--surface-2)}
+table.ops tr.op.open td{background:var(--surface-2);border-bottom-color:transparent}
+table.ops tr.op.flash td{animation:flash 1.6s ease-out}
+@keyframes flash{from{background:var(--accent-weak)}to{background:var(--surface-2)}}
+.c-st{width:116px}.c-att{width:124px}.c-op{width:32%}.c-h{width:24%}.c-area{width:10%}
+table.ops.audited .c-att{width:112px}table.ops.audited .c-op{width:28%}table.ops.audited .c-h{width:20%}table.ops.audited .c-area{width:9%}
+.cell-op{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cell-op .l1{display:flex;gap:6px;align-items:baseline;min-width:0}
+.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.target{font-family:ui-monospace,SFMono-Regular,"Cascadia Mono","Segoe UI Mono",Menlo,Consolas,monospace;font-size:12.5px}
+.verb{font-weight:700;font-family:ui-monospace,SFMono-Regular,"Cascadia Mono",Menlo,Consolas,monospace;font-size:12px;flex:none}
+.hcls{color:var(--muted)}
+.sub{color:var(--muted);font-size:12px}
+.tag{display:inline-block;font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-weak);border-radius:5px;padding:0 6px;line-height:18px;white-space:nowrap}
+.tag.warn{color:var(--amber);background:var(--amber-bg)}
+.tag.dim{color:var(--muted);background:var(--surface-2)}
+.why-t{font-weight:550}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;line-height:20px;padding:0 7px;border-radius:6px;border:1px solid var(--border);color:var(--muted);background:var(--surface);white-space:nowrap}
+.chip.risk{color:var(--lv-medium);border-color:color-mix(in srgb,var(--lv-medium) 35%,transparent);background:var(--lv-medium-bg)}
+.chip.mit{color:var(--text)}
+.chip.mit::before{content:"✓";font-weight:700;color:var(--muted)}
+.more-row{display:flex;justify-content:center;padding:14px}
+.btn{border:1px solid var(--border);background:var(--surface);border-radius:9px;height:34px;padding:0 14px;cursor:pointer;font-size:13px;font-weight:550}
+.btn:hover{border-color:var(--border-strong)}
+@media (max-width:760px){
+  table.ops{min-width:0}
+  table.ops thead{display:none}
+  table.ops,table.ops tbody,table.ops tr,table.ops td{display:block;width:auto}
+  table.ops tr.op{padding:12px 14px;border-bottom:1px solid var(--border)}
+  table.ops tr.op td{padding:2px 0;border:0;background:transparent!important}
+  table.ops td.att,table.ops td.stc{display:inline-block;margin-right:6px}
+  table.ops td.area{display:none}
+  .trunc{white-space:normal;overflow-wrap:anywhere}
+}
+
+tr.detail td{padding:0 12px 18px;background:var(--surface-2)}
+.detail-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:960px){.detail-grid{grid-template-columns:1fr}}
+.dcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+.dcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:0}
+.dcard h4{margin:0 0 10px;font-size:12px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details.dcard > summary{cursor:pointer;list-style:none}
+details.dcard > summary::-webkit-details-marker{display:none}
+details.dcard > summary h4{display:inline;margin:0}
+details.dcard > summary::after{content:" ▸";color:var(--muted);font-size:12px}
+details.dcard[open] > summary::after{content:" ▾"}
+details.dcard[open] > summary{margin-bottom:10px}
+.reason{padding:12px 0;border-top:1px solid var(--border)}
+.reason:first-of-type{border-top:0;padding-top:0}
+.reason .rt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:650}
+.reason p{margin:6px 0 8px;color:var(--muted)}
+.evi{margin:6px 0 0;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.evi .where{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:5px 10px;background:var(--surface-2);font-size:12px;color:var(--muted)}
+.evi .where .loc{color:var(--text);font-weight:550}
+.evi pre,.code{margin:0;padding:7px 10px;background:var(--code-bg);color:var(--code-text);white-space:pre;overflow-x:auto}
+.badge{font-size:10.5px;font-weight:650;border-radius:4px;padding:0 5px;line-height:16px;background:var(--surface);border:1px solid var(--border);color:var(--muted);white-space:nowrap}
+.badge.tx{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+dl.facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 14px;margin:0;font-size:13px}
+dl.facts dt{color:var(--muted)}
+dl.facts dd{margin:0;overflow-wrap:break-word;min-width:0}
+.effects{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+.effects td{padding:6px;border-top:1px solid var(--border);vertical-align:top}
+.effects tr:first-child td{border-top:0}
+.effects td:first-child{width:150px;padding-left:0}
+.effects td:last-child{width:170px;text-align:right}
+.effects .code{margin-top:4px;padding:3px 6px;border-radius:4px;font-size:12px}
+.note{color:var(--muted);font-size:12.5px;margin:10px 0 0}
+.finding{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:10px;background:var(--surface)}
+.finding h5{margin:0 0 6px;font-size:14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.finding p{margin:6px 0}
+.hop{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;padding:3px 0;border-top:1px dashed var(--border)}
+.hop:first-child{border-top:0}
+
+.spots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+@media (max-width:860px){.spots{grid-template-columns:1fr}}
+.spot{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);min-width:0}
+.spot h3{margin:0 0 6px;font-size:14.5px;display:flex;gap:8px;align-items:center}
+.spot p{margin:0;color:var(--muted);overflow-wrap:break-word}
+.spot.specific{border-left:3px solid var(--accent)}
+.spot details{margin-top:8px;font-size:12px;color:var(--muted)}
+.spot details summary{cursor:pointer}
+.spot details div{margin-top:4px;overflow-wrap:anywhere}
+details.more{margin-top:14px}
+details.more summary{cursor:pointer;color:var(--accent);font-size:13px}
+
+.prose{max-width:860px}
+.prose h3{margin-top:22px}
+.prose p,.prose li{color:var(--muted)}
+.prose strong{color:var(--text)}
+.legend{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 14px;align-items:start;margin:12px 0}
+.legend div{color:var(--muted)}
+.legend > span{justify-self:start}
+#areas-table td.t{max-width:0;width:42%}
+footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px solid var(--border);margin-top:48px}
+.hidden{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.print-only{display:none}
+@media print{
+  :root,:root[data-theme],:root:not([data-theme="light"]){
+    --bg:#fff;--surface:#fff;--surface-2:#f4f5f7;--border:#d5d9e0;--border-strong:#b8bec9;
+    --text:#111827;--muted:#4b5563;--faint:#646b78;--accent:#4338ca;--accent-weak:#eceefe;
+    --lv-high-fg:#ffffff;--lv-high-bg:#4c1d95;--lv-medium:#6d28d9;--lv-medium-bg:#ede9fe;--lv-low:#6a5a9e;
+    --bar-high:#4c1d95;--bar-medium:#8b5cf6;--bar-low:#c4b5fd;--bar-none:#dfe2e8;
+    --red:#c42b1c;--red-bg:#fdeceb;--amber:#8a5300;--amber-bg:#fdf3dc;--amber-bar:#d99a1e;--green:#176e30;--green-bg:#e6f4ea;--grey:#5b6472;--grey-bg:#eceef2;
+    --code-bg:#f2f3f6;--code-text:#283142;--shadow:none;
+  }
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .top,.toolbar,.more-row,.no-print{display:none!important}
+  .print-only{display:block!important}
+  table.ops tr.op{break-inside:avoid}
+  tr.detail{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="6" fill="var(--accent)"/><path d="M7 15.5l3-4 3 2.5 4-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Resilience Atlas</span>
+    </div>
+    <nav class="toc" aria-label="Sections">
+      <a href="#overview">Overview</a><a href="#attention" data-needs-ops>Fix here first</a><a href="#patterns" data-needs-ops>Patterns</a><a href="#operations" data-needs-ops>Operations</a><a href="#blind-spots">Blind spots</a><a href="#method">How to read</a>
+    </nav>
+    <button class="icon-btn" id="theme" type="button" aria-label="Switch between light and dark theme">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
+      <span>Theme</span>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="overview">
+    <p class="eyebrow">Resilience report</p>
+    <h1 id="title"></h1>
+    <p class="meta" id="meta"></p>
+    <div class="callout" id="state"></div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section id="attention">
+    <h2 id="attention-title">Fix here first</h2>
+    <p class="lede" id="attention-lede"></p>
+    <div class="cards" id="top"></div>
+  </section>
+
+  <section id="patterns" class="split">
+    <div class="panel">
+      <h3>Risk patterns found in code</h3>
+      <table class="list" id="patterns-table"></table>
+    </div>
+    <div class="panel" id="areas-panel">
+      <h3 id="areas-title">By area</h3>
+      <table class="list" id="areas-table"></table>
+    </div>
+  </section>
+
+  <section id="operations">
+    <h2>All operations</h2>
+    <p class="lede">Every entry point the scanner found: HTTP endpoints, consumers, scheduled jobs, listeners and more.<span class="no-print"> Click a row for the evidence.</span></p>
+    <p class="print-only sub" id="print-note"></p>
+    <div class="toolbar" role="search">
+      <div class="tb-row">
+        <label class="search"><span class="sr">Search operations</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="q" placeholder="Search path, queue, class, file, id…" autocomplete="off">
+        </label>
+        <div class="seg-wrap"><span class="sub" id="seg-label">Code hint</span><div class="seg" id="seg" role="group" aria-labelledby="seg-label"></div></div>
+      </div>
+      <div class="tb-row">
+        <select id="f-second" aria-label="Code hint" class="hidden"></select>
+        <select id="f-kind" aria-label="Kind"></select>
+        <select id="f-area" aria-label="Area"></select>
+        <select id="f-reason" aria-label="Risk pattern"></select>
+        <select id="f-signal" aria-label="What the code does"></select>
+        <select id="f-tag" aria-label="Tag"></select>
+        <button class="linkbtn hidden" id="reset" type="button">Reset filters</button>
+        <span class="count" id="count" aria-live="polite"></span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="ops" id="ops">
+        <thead><tr id="head"></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+      <div class="more-row hidden" id="more-row"><button class="btn" id="more" type="button">Show more</button></div>
+    </div>
+  </section>
+
+  <section id="blind-spots">
+    <h2>Blind spots</h2>
+    <p class="lede">What this report could not see. An operation missing from the list, or a pattern that did not fire, may be hiding here.</p>
+    <div class="spots" id="spots"></div>
+    <div id="annotations"></div>
+  </section>
+
+  <section id="coverage-section" class="hidden">
+    <h2>Audit coverage</h2>
+    <div id="coverage"></div>
+  </section>
+
+  <section id="method">
+    <h2>How to read this report</h2>
+    <div class="prose">
+      <h3>Code hints: from the code, before any audit</h3>
+      <div class="legend">
+        <span class="lv HIGH"><i><b></b><b></b><b></b></i>High</span><div>A pattern that loses or corrupts work when it fires: work handed to an in-memory thread after the caller was answered, a message sent inside an uncommitted transaction.</div>
+        <span class="lv MEDIUM"><i><b></b><b></b><b></b></i>Medium</span><div>A pattern that duplicates or stalls work under retries, restarts or several replicas: no idempotency check, a job without a lock, a remote call inside a transaction, state in memory.</div>
+        <span class="lv LOW"><i><b></b><b></b><b></b></i>Low</span><div>Worth a look, rarely a defect on its own: a cache in memory, a background thread, an in-process event inside a transaction.</div>
+        <span class="lv NONE"><i><b></b><b></b><b></b></i>No pattern</span><div>Nothing matched on the path the scanner read. This is not a clean bill of health.</div>
+        <span class="lv NA"><i><b></b><b></b><b></b></i>Not analysed</span><div>The code behind the operation was never read: Kotlin and files the Java parser could not handle are scanned for entry points only. Nothing is known about their risk.</div>
+      </div>
+      <p>The scanner reads the entry method, the methods of its class that it calls, and the methods of injected beans a few levels deep. A hint says <strong>where to look first</strong>; it is not a verdict. A mitigation that lives outside the code (a unique constraint, a dead-letter queue, a single replica) is invisible here.</p>
+      <h3>Status: from an audit, with evidence</h3>
+      <div class="legend">
+        <span class="st RED">Broken</span><div>A verified finding of critical or high severity: acknowledged work can be lost, duplicated or corrupted.</div>
+        <span class="st YELLOW">Smells</span><div>Fragile but working today, or suspected by triage and waiting for a deep audit.</div>
+        <span class="st GREEN">OK</span><div>A flow was traced with file-and-line evidence and the audit rules found nothing. At triage level it means no risk signal in the entry method and one hop.</div>
+        <span class="st GREY">Not audited</span><div>No verdict, or the verdict is stale because its files changed. Never shown as OK.</div>
+      </div>
+      <p>Statuses are computed by the report generator from verdict and finding records. No model writes a colour into this page, and a code hint never turns into a status.</p>
+      <h3>What the code does</h3>
+      <div class="legend" id="glossary"></div>
+      <h3>Discovery status</h3>
+      <div class="legend">
+        <span class="tag dim">static</span><div>Found from annotations and declarations whose values the scanner resolved exactly.</div>
+        <span class="tag dim">inferred</span><div>Found through a rule that can be wrong: an inherited mapping, a naming convention, regex-only parsing (Kotlin, files javac could not parse).</div>
+        <span class="tag dim">unknown</span><div>Something is there but its target is not known from the sources, such as a generated interface that has not been built.</div>
+      </div>
+    </div>
+  </section>
+  <footer id="footer"></footer>
+</main>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function () {
+"use strict";
+var D = JSON.parse(document.getElementById("data").textContent);
+var OPS = D.ops;
+var RULES = D.rules || {};
+function ruleText(code) { return (RULES[code] || {}).text || ""; }
+var FILES = D.files;
+var LEVELS = ["HIGH", "MEDIUM", "LOW", "NONE", "NA"];
+var LEVEL_LABEL = {HIGH: "High", MEDIUM: "Medium", LOW: "Low", NONE: "No pattern", NA: "Not analysed"};
+var COLOURS = ["RED", "YELLOW", "GREEN", "GREY"];
+var COLOUR_LABEL = {RED: "Broken", YELLOW: "Smells", GREEN: "OK", GREY: "Not audited"};
+var KIND_LABEL = {HTTP: "HTTP", MESSAGING: "Consumer", SCHEDULED: "Scheduled", JOB: "Job", EVENT: "Event listener",
+  LIFECYCLE: "Lifecycle", SOAP: "SOAP", WEBSOCKET: "WebSocket", GRAPHQL: "GraphQL", GRPC: "gRPC", ACTUATOR: "Actuator", ROUTER: "Router", PORTLET: "Portlet"};
+var SIGNALS = {
+  "async-handoff": {label: "Async hand-off", risk: true, text: "Work continues on another thread: an executor, @Async, CompletableFuture or a new Thread."},
+  "in-memory-state": {label: "In-memory state", risk: true, text: "A collection, counter or value field of a singleton bean, or the HTTP session, is changed: one copy per instance, gone on restart."},
+  "self-invocation": {label: "Proxy bypass", risk: true, text: "An @Async or @Transactional method is called through this, so the annotation has no effect."},
+  "local-file": {label: "Local file", risk: true, text: "Writes a file to the instance's own disk: lost when the instance is replaced, invisible to other replicas."},
+  "db-write": {label: "DB write", text: "A repository, JDBC, JPA, MongoDB, Redis or DynamoDB write."},
+  "message-send": {label: "Message send", text: "A send to Kafka, SQS, SNS, RabbitMQ, JMS, Stream, Pub/Sub, Kinesis or EventBridge."},
+  "external-call": {label: "Remote call", text: "An HTTP, SOAP, gRPC, SDK, object-storage or e-mail call to another system."},
+  "event-publish": {label: "In-process event", text: "ApplicationEventPublisher.publishEvent: handled inside this JVM."},
+  "transactional": {label: "Transaction", text: "A read-write transaction opens on this path (@Transactional or TransactionTemplate)."},
+  "retry": {label: "Retry", mit: true, text: "@Retryable, Resilience4j, RetryTemplate or @RetryableTopic on the path."},
+  "lock": {label: "Lock", mit: true, text: "ShedLock, Quartz @DisallowConcurrentExecution, a distributed lock or a row lock on the path."},
+  "idempotency-check": {label: "Idempotency check", mit: true, text: "A lookup by event, message or request id, or an insert that ignores duplicates, before acting."}
+};
+var SIGNAL_ORDER = ["async-handoff", "in-memory-state", "local-file", "self-invocation", "message-send", "db-write", "external-call", "event-publish", "transactional", "idempotency-check", "lock", "retry"];
+var WARNING_INFO = {
+  "parse-failures": {title: "Files the Java parser could not read", text: "These files were scanned with patterns instead of the compiler's parser. Their entry points are marked inferred and their call paths were not analysed."},
+  "kotlin": {title: "Kotlin is scanned by pattern matching", text: "Entry points in Kotlin files are found by patterns. Composed annotations and inherited mappings are not resolved, and call paths are not analysed."},
+  "missing-interfaces": {title: "Generated API interfaces are missing", text: "Controllers implement interfaces that are generated at build time. Build the project and rescan to see those endpoints exactly."},
+  "messaging-without-consumers": {title: "Messaging library without visible consumers", text: "A messaging library is declared but no consumer was found. Consumers may be wired in configuration or in code the scanner does not recognise."},
+  "xml": {title: "Endpoints declared in XML", text: "XML configuration declares endpoints that are not in this report."},
+  "unresolved-annotations": {title: "Annotations from outside the repository", text: "Annotations that look like entry points come from libraries the scanner cannot read. They may hide whole groups of endpoints or listeners."},
+  "library-parents": {title: "Controllers inheriting from library classes", text: "Mappings inherited from library base classes are not visible."},
+  "scheduling-not-enabled": {title: "@Scheduled without @EnableScheduling", text: "Unless scheduling is enabled outside the repository, these methods never run on a schedule."},
+  "async-not-enabled": {title: "@Async without @EnableAsync", text: "Unless async is enabled outside the repository, @Async methods run synchronously."},
+  "spring-integration": {title: "Spring Integration flows", text: "Only @InboundChannelAdapter is scanned. IntegrationFlow DSL and XML flows are not in this report."},
+  "gateway": {title: "Gateway routes live in configuration", text: "Spring Cloud Gateway routes are defined in YAML or RouteLocator beans, so the requests this service forwards are not listed here."},
+  "path-prefix": {title: "A path prefix is added in configuration", text: "A WebMvcConfigurer adds a prefix to controller paths. The paths listed here are as declared on the controllers, without that prefix."},
+  "web-xml": {title: "Servlets, filters and listeners in web.xml", text: "web.xml declares servlets, filters or listeners that are not in this report, and controller paths are relative to its servlet mappings."},
+  "programmatic-registration": {title: "Servlets and endpoints registered in code", text: "Servlets, filters, session listeners or JAX-WS endpoints are registered programmatically and are not listed as operations."},
+  "no-sources": {title: "No sources found", text: "The scanner found no Java or Kotlin main sources."},
+  "other": {title: "Scanner note", text: ""}
+};
+var SUBKIND_LABEL = {
+  KAFKA: "Kafka", SQS: "SQS", RABBIT: "RabbitMQ", JMS: "JMS", STREAM: "Stream", INTEGRATION: "Integration", CAMEL: "Camel",
+  REDIS: "Redis", KINESIS: "Kinesis", PUBSUB: "Pub/Sub", RSOCKET: "RSocket", UNKNOWN: "unknown broker",
+  CRON: "cron", FIXED_RATE: "every", FIXED_DELAY: "delay after", ONE_TIME: "once after", PROGRAMMATIC: "in code",
+  EVENT_LISTENER: "on", TRANSACTIONAL_EVENT_LISTENER: "after commit", MODULE_LISTENER: "module event", APPLICATION_LISTENER: "on",
+  APPLICATION_RUNNER: "ApplicationRunner", COMMAND_LINE_RUNNER: "CommandLineRunner", LIFECYCLE_START: "SmartLifecycle start",
+  LIFECYCLE_STOP: "SmartLifecycle stop", POST_CONSTRUCT: "@PostConstruct", AFTER_PROPERTIES_SET: "afterPropertiesSet",
+  PRE_DESTROY: "@PreDestroy", DESTROY: "destroy", SHUTDOWN_HOOK: "shutdown hook",
+  JAX_WS: "JAX-WS", SPRING_WS: "Spring-WS", QUARTZ: "Quartz", QUERY: "query", MUTATION: "mutation", SUBSCRIPTION: "subscription", FIELD: "field",
+  SERVICE: "gRPC", READ: "read", WRITE: "write", WEB: "web",
+  RENDER: "render", ACTION: "action", RESOURCE: "resource", EVENT: "event", REQUEST: "request"
+};
+
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]; }); }
+/** Escaped text that may break after "/" and "." instead of inside an identifier. */
+function brk(s) { return esc(s).replace(/([\/.])/g, "$1<wbr>"); }
+function fmt(n) { return Number(n || 0).toLocaleString("en-US"); }
+function pct(n, t) { return t ? Math.round(1000 * n / t) / 10 : 0; }
+function plural(n, one, many) { return fmt(n) + " " + (n === 1 ? one : (many || one + "s")); }
+function fileName(path) { return String(path).split(/[\\/]/).pop(); }
+function arr(x) { return Array.isArray(x) ? x.filter(function (v) { return v != null; }) : []; }
+function sentence(s) { s = String(s || "").trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) + (/[.!?]$/.test(s) ? "" : ".") : ""; }
+function human(s) { return s == null || s === "?" ? "unknown" : String(s).toLowerCase().replace(/_/g, " "); }
+function lvl(o) { return !o.reach.analysed && o.level === "NONE" ? "NA" : o.level; }
+function levelPill(l) { return '<span class="lv ' + l + '"><i><b></b><b></b><b></b></i>' + LEVEL_LABEL[l] + "</span>"; }
+function statusPill(c) { return '<span class="st ' + c + '">' + COLOUR_LABEL[c] + "</span>"; }
+function dateTime(iso) {
+  if (!iso) return "?";
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-GB", {day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"});
+}
+
+// theme, remembered per viewer; the page renders correctly without storage
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem("resilience-report-theme"); } catch (e) { }
+  if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+  el("theme").addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = dark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("resilience-report-theme", next); } catch (e) { }
+  });
+})();
+
+var audited = OPS.some(function (o) { return o.colour !== "GREY" || o.verdict; });
+var cov = D.coverage || {};
+
+var UNIT = {MILLISECONDS: 0.001, SECONDS: 1, MINUTES: 60, HOURS: 3600, DAYS: 86400};
+function seconds(n) {
+  if (n >= 86400 && n % 86400 === 0) return n / 86400 + " d";
+  if (n >= 3600 && n % 3600 === 0) return n / 3600 + " h";
+  if (n >= 60 && n % 60 === 0) return n / 60 + " min";
+  return (Math.round(n * 1000) / 1000) + " s";
+}
+/** "60000 MILLISECONDS" → "60 s", "PT1H" → "1 h", "${key:PT5M}" → "5 min"; anything else as written. */
+function schedule(t) {
+  var p = /^\$\{([^:}]+):([^}]*)\}$/.exec(t);
+  if (p) return {text: schedule(p[2]).text, title: "configurable: " + p[1] + " (default " + p[2] + ")"};
+  var m = /^(\d+)\s+(MILLISECONDS|SECONDS|MINUTES|HOURS|DAYS)$/.exec(t);
+  if (m) return {text: seconds(Number(m[1]) * UNIT[m[2]]), title: t};
+  var iso = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(t);
+  if (iso && (iso[1] || iso[2] || iso[3])) return {text: seconds((Number(iso[1] || 0) * 3600) + (Number(iso[2] || 0) * 60) + Number(iso[3] || 0)), title: t};
+  return {text: t, title: t};
+}
+function opLabel(o) {
+  var k = o.kind, s = o.subkind || "", t = o.target || "";
+  var verb = k === "HTTP" || k === "ROUTER" ? s.replace(/,/g, " ") : SUBKIND_LABEL[s] || human(s);
+  if (k === "LIFECYCLE") return {verb: verb, text: o.cls + "." + o.method};
+  if (k === "SOAP") return {verb: verb, text: t + (o.method && o.method !== "*" ? " · " + o.method : "")};
+  if (/^<[^>]*>$/.test(t)) {
+    if (k === "SCHEDULED" && s === "PROGRAMMATIC") return {verb: "", text: "scheduled in code", muted: true};
+    if (k === "MESSAGING") return {verb: verb, text: "consumer wired in code", muted: true};
+    return {verb: verb, text: t, muted: true};
+  }
+  if (k === "SCHEDULED" && s !== "CRON") { var d = schedule(t); return {verb: verb, text: d.text, title: d.title}; }
+  return {verb: verb, text: t};
+}
+function handlerHtml(o) { return '<span class="hcls">' + esc(o.cls) + ".</span><b>" + esc(o.method) + "</b>"; }
+function handler(o) { return o.cls + "." + o.method; }
+function where(o) { return FILES[o.file] + ":" + o.line; }
+function signalsOf(o) {
+  var seen = {};
+  o.effects.forEach(function (e) { seen[e.s] = true; });
+  return SIGNAL_ORDER.filter(function (s) { return seen[s]; });
+}
+function chip(sig) {
+  var s = SIGNALS[sig] || {label: sig};
+  return '<span class="chip' + (s.risk ? " risk" : s.mit ? " mit" : "") + '" title="' + esc(s.text || "") + '">' + esc(s.label) + "</span>";
+}
+function tagsHtml(o) {
+  var out = "";
+  o.tags.forEach(function (t) {
+    var cls = t === "unauthenticated-write" ? "tag warn" : t === "disabled" ? "tag dim" : "tag";
+    out += ' <span class="' + cls + '">' + esc(t.replace(/-/g, " ")) + "</span>";
+  });
+  if (o.placeholder) out += ' <span class="tag dim" title="The target contains a ${...} placeholder resolved at runtime">configurable</span>';
+  if (o.discovery !== "STATIC") out += ' <span class="tag dim" title="Discovery status">' + esc(o.discovery.toLowerCase()) + "</span>";
+  return out;
+}
+function hopBadges(e) {
+  return (e.hop > 0 ? '<span class="badge" title="Bean boundaries crossed from the entry method">' + (e.hop === 1 ? "1 bean away" : e.hop + " beans away") + "</span>" : "") +
+    (e.tx ? '<span class="badge tx" title="Inside a read-write transaction opened on this path">in transaction</span>'
+      : e.ro ? '<span class="badge" title="Inside a read-only transaction: it still holds a database connection">in read-only transaction</span>' : "");
+}
+
+var a = D.atlas || {};
+el("title").textContent = D.title;
+document.title = D.title + " · Resilience report";
+var b = a.build || {}, f = a.files || {};
+var metaParts = [];
+if (a.commit) metaParts.push('<span>Commit <code>' + esc(String(a.commit).slice(0, 10)) + "</code>" + (a.dirty ? " + uncommitted changes" : "") + "</span>");
+metaParts.push("<span>Scanned " + esc(dateTime(a.scannedAt)) + "</span>");
+var stack = [];
+if (b.springBootVersion) stack.push("Spring Boot " + b.springBootVersion);
+if (b.javaVersion) stack.push("Java " + b.javaVersion);
+if (b.tool) stack.push(b.tool + (b.modules > 1 ? ", " + b.modules + " modules" : ""));
+if (stack.length) metaParts.push("<span>" + esc(stack.join(" · ")) + "</span>");
+metaParts.push("<span>" + fmt(f.java) + " Java" + (f.kotlin ? " · " + fmt(f.kotlin) + " Kotlin" : "") + " files</span>");
+el("meta").innerHTML = metaParts.join("");
+el("footer").innerHTML = "Generated by " + esc(D.generator) + " on " + esc(dateTime(D.generatedAt)) + " from <code>.reliability/</code>. Every number on this page comes from the atlas and audit files; nothing is sent anywhere.";
+
+var byLevel = {HIGH: 0, MEDIUM: 0, LOW: 0, NONE: 0, NA: 0}, byColour = {RED: 0, YELLOW: 0, GREEN: 0, GREY: 0}, byKind = {};
+var notAnalysed = 0, budgetHits = 0, methodsRead = 0;
+OPS.forEach(function (o) {
+  o.reasons.sort(function (x, y) { return LEVELS.indexOf(x.level) - LEVELS.indexOf(y.level); });
+  o._lvl = lvl(o);
+  byLevel[o._lvl]++;
+  byColour[o.colour]++;
+  byKind[o.kind] = (byKind[o.kind] || 0) + 1;
+  if (!o.reach.analysed) notAnalysed++;
+  if (o.reach.budgetHit) budgetHits++;
+  methodsRead += o.reach.methods || 0;
+});
+var total = OPS.length;
+var analysedOps = total - notAnalysed;
+
+var PATTERNS = {};
+OPS.forEach(function (o) {
+  o.reasons.forEach(function (r) {
+    var p = PATTERNS[r.code] || (PATTERNS[r.code] = {code: r.code, title: r.title, level: r.level, n: 0});
+    p.n++;
+    if (LEVELS.indexOf(r.level) < LEVELS.indexOf(p.level)) p.level = r.level;
+  });
+});
+var patternList = Object.keys(PATTERNS).map(function (k) { return PATTERNS[k]; })
+  .sort(function (x, y) { return LEVELS.indexOf(x.level) - LEVELS.indexOf(y.level) || y.n - x.n; });
+
+var SPOTS = [];
+(D.warnings || []).forEach(function (w) {
+  var info = WARNING_INFO[w.code] || WARNING_INFO.other;
+  SPOTS.push({specific: true, title: info.title, text: info.text || w.text, raw: w.text});
+});
+if (notAnalysed) SPOTS.push({specific: true, title: "Operations without call-path analysis", text: plural(notAnalysed, "operation") + " (Kotlin, regex fallback or synthetic entry points) show no hint because their code was not parsed. \"Not analysed\" says nothing about their risk."});
+if (arr(D.auditProblems).length) SPOTS.push({specific: true, title: "Audit records that could not be read", text: plural(D.auditProblems.length, "row") + " in the audit files are not valid JSON and were skipped, so their verdicts or findings are missing here.", raw: D.auditProblems.slice(0, 5).join("; ")});
+if (a.effectsPresent === false && total) SPOTS.push({specific: true, title: "Atlas built by an older scanner", text: "The atlas has no effects file, so no operation has hints. Rescan to compute them."});
+var specificSpots = SPOTS.length;
+SPOTS.push({title: "What a source scan never sees", text: "Replica counts, dead-letter queues, broker redelivery and visibility settings, timeouts set in YAML or by the platform, unique constraints in the database, and beans registered at runtime or in XML. A mitigation there does not lower a hint, and a failure there does not raise it."});
+SPOTS.push({title: "How deep the scan reads", text: "The entry method, the methods of its class it calls, and the methods of injected beans a few levels deep. Calls into code outside the repository and on objects whose type is not declared in the sources (lambda parameters, Lombok-generated fields, library return values) are not followed." + (budgetHits ? " " + plural(budgetHits, "operation") + " hit the method budget." : "")});
+
+(function () {
+  var icon = '<div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v5M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>';
+  var head, fine;
+  if (!total) {
+    head = "<strong>No operations found</strong> in " + plural((f.java || 0) + (f.kotlin || 0), "source file") + ".";
+    fine = "The scanner recognised no HTTP mapping, consumer, scheduled job, listener or startup hook. That is expected for a library, a gateway whose routes live in configuration, or a tool started from main(). Nothing on this page means the application is safe; check the blind spots below.";
+    ["kpis", "attention", "patterns", "operations"].forEach(function (id) { el(id).classList.add("hidden"); });
+    Array.prototype.forEach.call(document.querySelectorAll(".toc a[data-needs-ops]"), function (x) { x.classList.add("hidden"); });
+  } else if (audited) {
+    var withVerdict = total - byColour.GREY;
+    head = "<strong>" + fmt(byColour.RED) + " broken</strong> and <strong>" + fmt(byColour.YELLOW) + " smelly</strong> operations among the " + fmt(withVerdict) + " audited so far; " + fmt(byColour.GREY) + " of " + fmt(total) + " are not audited yet.";
+    fine = (cov.status === "COMPLETE" ? "Complete audit." : "Partial audit.") + (cov.budget ? " Spent $" + Number(cov.budget.usdSpent || 0).toFixed(2) + (cov.budget.usdCap ? " of $" + Number(cov.budget.usdCap).toFixed(2) : "") + ". " + esc(sentence(cov.budget.stoppedBecause)) : "") +
+      " Operations without a verdict keep their code hint, which is not a verdict.";
+  } else if (!analysedOps) {
+    head = "<strong>No call path was read</strong>, so this page cannot rank the " + plural(total, "operation") + " it found by risk.";
+    fine = "Their code is Kotlin or could not be parsed: entry points are found by patterns only. Each operation is listed as \"Not analysed\", which says nothing about its risk.";
+  } else {
+    if (byLevel.HIGH) head = "<strong>" + plural(byLevel.HIGH, "operation") + "</strong> can lose or corrupt work when " + (byLevel.HIGH === 1 ? "its" : "their") + " pattern fires";
+    else head = "No operation shows a pattern that loses work outright";
+    if (byLevel.MEDIUM) head += ", and <strong>" + fmt(byLevel.MEDIUM) + (byLevel.HIGH ? " more" : "") + "</strong> can duplicate or stall work under retries, restarts or several replicas";
+    head += ".";
+    if (patternList[0] && LEVELS.indexOf(patternList[0].level) <= 1) head += " Leading pattern: " + esc(patternList[0].title.toLowerCase()) + " (" + plural(patternList[0].n, "operation") + ").";
+    fine = "Code hints from a static scan, not verdicts. Broken, Smells and OK appear only after an audit traces a flow and checks it with file-and-line evidence." +
+      (notAnalysed ? " " + plural(notAnalysed, "operation") + " could not be analysed at all." : "");
+  }
+  el("state").innerHTML = icon + '<div><p class="headline">' + head + '</p><p class="fine">' + fine + "</p></div>";
+})();
+
+(function () {
+  if (!total) return;
+  var kinds = Object.keys(byKind).sort(function (x, y) { return byKind[y] - byKind[x]; });
+  var kindLine = kinds.slice(0, 3).map(function (k) { return fmt(byKind[k]) + " " + (KIND_LABEL[k] || k); }).join(" · ") + (kinds.length > 3 ? " · + " + plural(kinds.length - 3, "more kind") : "");
+  var hints = '<div class="kpi"><span class="label">Code hints</span><div class="pairs">' +
+    '<div><b style="color:var(--lv-high-bg)">' + fmt(byLevel.HIGH) + '</b><span>high</span></div>' +
+    '<div><b style="color:var(--lv-medium)">' + fmt(byLevel.MEDIUM) + '</b><span>medium</span></div>' +
+    '<div><b style="color:var(--lv-low)">' + fmt(byLevel.LOW) + '</b><span>low</span></div></div>' +
+    '<div class="minibar" role="img" aria-label="' + LEVELS.map(function (l) { return LEVEL_LABEL[l] + " " + byLevel[l]; }).join(", ") + '">' +
+    LEVELS.map(function (l) { return '<span class="b-' + l + '" style="width:' + pct(byLevel[l], total) + '%"></span>'; }).join("") + "</div></div>";
+  var tiles = [];
+  tiles.push('<div class="kpi"><span class="label">Operations</span><span class="value">' + fmt(total) + '</span><span class="sub">' + esc(kindLine) + "</span></div>");
+  if (audited) {
+    tiles.push('<div class="kpi"><span class="label">Audit verdicts</span><div class="pairs">' +
+      ["RED", "YELLOW", "GREEN"].map(function (c) { return '<div><b style="color:var(--' + (c === "RED" ? "red" : c === "YELLOW" ? "amber" : "green") + ')">' + fmt(byColour[c]) + "</b><span>" + COLOUR_LABEL[c].toLowerCase() + "</span></div>"; }).join("") + "</div>" +
+      '<div class="minibar" role="img" aria-label="' + COLOURS.map(function (c) { return COLOUR_LABEL[c] + " " + byColour[c]; }).join(", ") + '">' + COLOURS.map(function (c) { return '<span class="b-' + c + '" style="width:' + pct(byColour[c], total) + '%"></span>'; }).join("") + "</div>" +
+      '<span class="sub">' + fmt(byColour.GREY) + " not audited</span></div>");
+    tiles.push(hints);
+  } else {
+    tiles.push(hints);
+    tiles.push('<div class="kpi"><span class="label">Call paths read</span><span class="value">' + fmt(analysedOps) + "<small> of " + fmt(total) + '</small></span><span class="sub">' +
+      (analysedOps ? fmt(methodsRead) + " method bodies read" : "Kotlin or unparsed code: entry points only") + "</span></div>");
+  }
+  tiles.push('<div class="kpi"><span class="label">Blind spots</span><span class="value">' + fmt(specificSpots) + '</span><span class="sub">' +
+    (specificSpots ? "specific to this app" : "no warning for this app") + " · 2 standing limits · <a href=\"#blind-spots\">review</a></span></div>");
+  el("kpis").innerHTML = tiles.join("");
+})();
+
+function sortedByAttention(list) {
+  return list.slice().sort(function (x, y) {
+    if (audited) {
+      var cx = COLOURS.indexOf(x.colour), cy = COLOURS.indexOf(y.colour);
+      if (cx !== cy) return cx - cy;
+    }
+    return y.score - x.score || LEVELS.indexOf(x._lvl) - LEVELS.indexOf(y._lvl) || (x.kind + x.target).localeCompare(y.kind + y.target);
+  });
+}
+function evidenceHtml(o, idx, compact) {
+  var e = o.effects[idx];
+  if (!e) return "";
+  return '<div class="evi"><div class="where"><span class="loc mono">' + esc(fileName(FILES[e.f])) + ":" + e.l + "</span>" +
+    (compact ? "" : '<span class="mono">' + esc(e.sym) + "</span>") + "<span>" + esc(e.d) + "</span>" + hopBadges(e) + "</div>" +
+    (e.code ? "<pre>" + esc(e.code) + "</pre>" : "") + "</div>";
+}
+function opLink(o) {
+  var l = opLabel(o);
+  return '<a class="mono" href="#' + esc(o.id) + '"><span class="verb">' + esc(l.verb) + "</span> " + esc(l.text) + "</a>";
+}
+(function () {
+  if (!total) return;
+  if (audited) {
+    el("attention-title").textContent = "Worst verdicts";
+    var worst = sortedByAttention(OPS.filter(function (o) { return o.colour === "RED" || o.colour === "YELLOW"; })).slice(0, 6);
+    el("attention-lede").textContent = worst.length ? "The operations with the most severe audit verdicts." : "";
+    el("top").innerHTML = worst.length ? worst.map(function (o) {
+      var lab = opLabel(o), fd = (o.findings || [])[0];
+      return '<div class="card click" tabindex="0" role="button" data-open="' + esc(o.id) + '">' +
+        '<div class="row1">' + statusPill(o.colour) + '<span class="kind">' + esc(KIND_LABEL[o.kind] || o.kind) + "</span>" + tagsHtml(o) + "</div>" +
+        '<div class="op"><span class="verb">' + esc(lab.verb) + '</span> <span class="target">' + esc(lab.text) + "</span></div>" +
+        '<div class="handler">' + handlerHtml(o) + "</div>" +
+        (fd ? '<p class="why"><b>' + esc(fd.ruleId + " · " + (fd.title || "")) + "</b></p>" : o.verdict && o.verdict.summary ? '<p class="why">' + esc(o.verdict.summary) + "</p>" : "") +
+        "</div>";
+    }).join("") : '<div class="empty">No operation has a Broken or Smells verdict yet.</div>';
+    return;
+  }
+  var groups = {}, order = [], flagged = 0;
+  OPS.forEach(function (o) {
+    if (o.level !== "HIGH" && o.level !== "MEDIUM") return;
+    flagged++;
+    var r = o.reasons[0], e = r && o.effects[r.ev[0]];
+    var k = r && e ? r.code + "@" + e.f + ":" + e.l : o.id;
+    if (!groups[k]) { groups[k] = {r: r, o: o, ops: [], max: 0}; order.push(k); }
+    groups[k].ops.push(o);
+    groups[k].max = Math.max(groups[k].max, o.score);
+  });
+  var list = order.map(function (k) { return groups[k]; }).sort(function (x, y) {
+    return LEVELS.indexOf(x.r.level) - LEVELS.indexOf(y.r.level) || y.max - x.max || y.ops.length - x.ops.length;
+  });
+  if (!list.length) {
+    el("attention-lede").textContent = "";
+    el("top").innerHTML = '<div class="empty">' + (analysedOps
+      ? "The static scan found no high or medium risk pattern. That is not the same as safe: check the blind spots, and remember that mitigations and failures outside the code are invisible here."
+      : "The scanner could not read any call path in this application, so it cannot rank operations. See the blind spots.") + "</div>";
+    return;
+  }
+  el("attention-lede").textContent = plural(order.length, "place") + " in the code behind the " + plural(flagged, "operation") + " with a high or medium hint" +
+    (list.length > 6 ? "; the 6 that matter most are shown, the rest are in the table" : "") + ". One fix at a place covers every operation that reaches it.";
+  el("top").innerHTML = list.slice(0, 6).map(function (g) {
+    var ops = sortedByAttention(g.ops);
+    return '<div class="card"><div class="row1">' + levelPill(g.r.level) + '<span class="title">' + esc(g.r.title) + "</span></div>" +
+      '<p class="why">' + esc(ruleText(g.r.code)) + "</p>" + (g.r.ev.length ? evidenceHtml(g.o, g.r.ev[0], false) : "") +
+      '<div class="affects"><span class="sub">' + (ops.length > 1 ? "Reached from " + plural(ops.length, "operation") : "Reached from") + "</span>" +
+      ops.slice(0, 4).map(opLink).join("") + (ops.length > 4 ? '<span class="sub">+ ' + fmt(ops.length - 4) + " more</span>" : "") + "</div></div>";
+  }).join("");
+})();
+
+el("patterns-table").innerHTML = patternList.length
+  ? '<tr><th>Pattern</th><th>Hint</th><th class="n">Operations</th></tr>' + patternList.map(function (p) {
+    return '<tr class="click" data-reason="' + esc(p.code) + '" tabindex="0"><td class="t">' + esc(p.title) + "</td><td>" + levelPill(p.level) + '</td><td class="n">' + fmt(p.n) + "</td></tr>";
+  }).join("")
+  : '<tr><td class="sub">' + (analysedOps ? "No pattern fired on any operation." : "No call path was read, so no pattern could fire.") + "</td></tr>";
+
+var areaKey = audited ? "colour" : "_lvl";
+var areaValues = audited ? COLOURS : LEVELS;
+var AREAS = {};
+OPS.forEach(function (o) {
+  var x = AREAS[o.area] || (AREAS[o.area] = {name: o.area, n: 0, c: {}});
+  x.n++;
+  x.c[o[areaKey]] = (x.c[o[areaKey]] || 0) + 1;
+});
+var areaList = Object.keys(AREAS).map(function (k) { return AREAS[k]; })
+  .sort(function (x, y) { return ((y.c.HIGH || 0) + (y.c.RED || 0)) - ((x.c.HIGH || 0) + (x.c.RED || 0)) || y.n - x.n; });
+var showArea = areaList.length > 1 && areaList.every(function (x) { return x.n < 0.9 * total; });
+var AREA_WORD = {domain: "Domain", module: "Module", "package": "Package"}[a.areaSource] || "Area";
+if (!showArea) {
+  el("areas-panel").classList.add("hidden");
+  el("patterns").classList.add("single");
+} else {
+  el("areas-title").textContent = "By " + AREA_WORD.toLowerCase();
+  el("areas-table").innerHTML = "<tr><th>" + esc(AREA_WORD) + '</th><th class="n">Operations</th><th class="n">' + (audited ? "Broken" : "High") + '</th><th class="n">' + (audited ? "Smells" : "Medium") + '</th><th style="width:30%">Distribution</th></tr>' +
+    areaList.slice(0, 14).map(function (x) {
+      var first = audited ? "RED" : "HIGH", second = audited ? "YELLOW" : "MEDIUM";
+      var label = areaValues.map(function (v) { return (audited ? COLOUR_LABEL[v] : LEVEL_LABEL[v]) + " " + (x.c[v] || 0); }).join(", ");
+      return '<tr class="click" data-area="' + esc(x.name) + '" tabindex="0"><td class="t trunc" title="' + esc(x.name) + '">' + esc(x.name) + '</td><td class="n">' + fmt(x.n) + '</td><td class="n">' + fmt(x.c[first] || 0) + '</td><td class="n">' + fmt(x.c[second] || 0) + "</td>" +
+        '<td><div class="bar" role="img" aria-label="' + esc(label) + '" title="' + esc(label) + '">' +
+        areaValues.map(function (v) { return '<span class="b-' + v + '" style="width:' + pct(x.c[v] || 0, x.n) + '%"></span>'; }).join("") + "</div></td></tr>";
+    }).join("") + (areaList.length > 14 ? '<tr><td colspan="5" class="sub">' + plural(areaList.length - 14, "more " + AREA_WORD.toLowerCase()) + " in the filter below</td></tr>" : "");
+}
+
+var CHUNK = 200;
+var state = {q: "", seg: "", sort: "attention", dir: 1, shown: CHUNK, open: {}};
+OPS.forEach(function (o, i) {
+  o._i = i;
+  o._signals = signalsOf(o);
+  o._search = [o.id, o.kind, o.subkind, o.target, o.cls, o.pkg, o.method, FILES[o.file], o.area, o.tags.join(" "),
+    o.reasons.map(function (r) { return r.title; }).join(" "), o._signals.join(" ")].join(" ").toLowerCase();
+});
+var COLS = [];
+if (audited) COLS.push({key: "status", label: "Status", cls: "c-st", sort: function (o) { return COLOURS.indexOf(o.colour) * 1000 - o.score; }});
+COLS.push({key: "attention", label: "Code hint", cls: "c-att", sort: function (o) { return -o.score * 10 + LEVELS.indexOf(o._lvl); }});
+COLS.push({key: "operation", label: "Operation", cls: "c-op", sort: function (o) { return o.kind + " " + o.target + " " + o.subkind; }});
+COLS.push({key: "handler", label: "Handler", cls: "c-h", sort: function (o) { return handler(o); }});
+if (showArea) COLS.push({key: "area", label: AREA_WORD, cls: "c-area", sort: function (o) { return o.area; }});
+COLS.push({key: "why", label: "Why", cls: "", sort: function (o) { return o.reasons.length ? LEVELS.indexOf(o.reasons[0].level) * 100 - o.reasons.length : 999; }});
+if (audited) el("ops").classList.add("audited");
+
+function fill(id, label, values, labels) {
+  el(id).innerHTML = '<option value="">' + esc(label) + "</option>" + values.map(function (v) {
+    return '<option value="' + esc(v) + '">' + esc(labels ? labels[v] || v : v) + "</option>";
+  }).join("");
+}
+function uniq(fn) { var s = {}; OPS.forEach(function (o) { [].concat(fn(o)).forEach(function (v) { if (v != null && v !== "") s[v] = true; }); }); return Object.keys(s).sort(); }
+fill("f-kind", "All kinds", uniq(function (o) { return o.kind; }), KIND_LABEL);
+fill("f-area", "All " + AREA_WORD.toLowerCase() + "s", uniq(function (o) { return o.area; }));
+if (!showArea) el("f-area").classList.add("hidden");
+var reasonLabels = {}; patternList.forEach(function (p) { reasonLabels[p.code] = p.title; });
+fill("f-reason", "All patterns", patternList.map(function (p) { return p.code; }), reasonLabels);
+if (!patternList.length) el("f-reason").classList.add("hidden");
+var sigLabels = {}; Object.keys(SIGNALS).forEach(function (k) { sigLabels[k] = SIGNALS[k].label; });
+var presentSignals = SIGNAL_ORDER.filter(function (s) { return OPS.some(function (o) { return o._signals.indexOf(s) >= 0; }); });
+fill("f-signal", "Anything the code does", presentSignals, sigLabels);
+if (!presentSignals.length) el("f-signal").classList.add("hidden");
+var tagValues = uniq(function (o) { return o.tags; });
+fill("f-tag", "All tags", tagValues);
+if (!tagValues.length) el("f-tag").classList.add("hidden");
+// The segmented control holds the primary dimension: statuses once an audit ran, code hints before.
+var SEG = audited ? COLOURS.filter(function (c) { return byColour[c]; }) : LEVELS.filter(function (l) { return byLevel[l]; });
+var SEG_COUNT = audited ? byColour : byLevel, SEG_LABEL = audited ? COLOUR_LABEL : LEVEL_LABEL;
+el("seg-label").textContent = audited ? "Status" : "Code hint";
+el("seg").innerHTML = '<button type="button" data-v="" aria-pressed="true">All <span class="c">' + fmt(total) + "</span></button>" +
+  SEG.map(function (v) { return '<button type="button" data-v="' + v + '" aria-pressed="false">' + SEG_LABEL[v] + ' <span class="c">' + fmt(SEG_COUNT[v]) + "</span></button>"; }).join("");
+if (audited) {
+  fill("f-second", "All code hints", LEVELS.filter(function (l) { return byLevel[l]; }), LEVEL_LABEL);
+  el("f-second").classList.remove("hidden");
+}
+el("head").innerHTML = COLS.map(function (c) { return '<th scope="col" class="' + c.cls + '" data-key="' + c.key + '"><button type="button" class="th-sort">' + c.label + "</button></th>"; }).join("");
+
+var SELECTS = ["f-second", "f-kind", "f-area", "f-reason", "f-signal", "f-tag"];
+var filtered = OPS;
+function filtersActive() { return !!(el("q").value.trim() || state.seg || SELECTS.some(function (id) { return el(id).value; })); }
+function apply(keepShown) {
+  state.q = el("q").value.trim().toLowerCase();
+  var second = el("f-second").value, kind = el("f-kind").value, area = el("f-area").value;
+  var reason = el("f-reason").value, signal = el("f-signal").value, tag = el("f-tag").value;
+  var terms = state.q ? state.q.split(/\s+/) : [];
+  filtered = OPS.filter(function (o) {
+    if (state.seg && (audited ? o.colour : o._lvl) !== state.seg) return false;
+    if (second && o._lvl !== second) return false;
+    if (kind && o.kind !== kind) return false;
+    if (area && o.area !== area) return false;
+    if (reason && !o.reasons.some(function (r) { return r.code === reason; })) return false;
+    if (signal && o._signals.indexOf(signal) < 0) return false;
+    if (tag && o.tags.indexOf(tag) < 0) return false;
+    for (var i = 0; i < terms.length; i++) if (o._search.indexOf(terms[i]) < 0) return false;
+    return true;
+  });
+  if (state.sort === "attention" && state.dir === 1) {
+    filtered = sortedByAttention(filtered);
+  } else {
+    var col = COLS.filter(function (c) { return c.key === state.sort; })[0];
+    filtered.sort(function (x, y) { var p = col.sort(x), q = col.sort(y); return (p < q ? -1 : p > q ? 1 : x._i - y._i) * state.dir; });
+  }
+  if (!keepShown) state.shown = CHUNK;
+  render();
+}
+function whyHtml(o) {
+  var r0 = o.reasons[0];
+  var chips = o._signals.filter(function (s) { return SIGNALS[s] && (SIGNALS[s].risk || SIGNALS[s].mit); }).map(chip).join("");
+  var head = r0
+    ? '<div class="trunc why-t" title="' + esc(ruleText(r0.code)) + '">' + esc(r0.title) + "</div>" + (o.reasons.length > 1 ? '<div class="sub">+ ' + plural(o.reasons.length - 1, "more pattern") + "</div>" : "")
+    : '<span class="sub">' + (o.reach.analysed ? "No pattern on the path read" : "Code not analysed") + "</span>";
+  return head + (chips ? '<div class="chips">' + chips + "</div>" : "");
+}
+function rowHtml(o) {
+  var lab = opLabel(o), open = !!state.open[o.id];
+  var cells = "";
+  if (audited) cells += '<td class="stc">' + statusPill(o.colour) + (o.colourNote ? '<div class="sub">' + esc(o.colourNote) + "</div>" : "") + "</td>";
+  cells += '<td class="att">' + levelPill(o._lvl) + "</td>";
+  cells += '<td><div class="cell-op"><div class="l1">' + (o.kind === "HTTP" ? "" : '<span class="kind">' + esc(KIND_LABEL[o.kind] || o.kind) + "</span>") +
+    (lab.verb ? '<span class="verb">' + esc(lab.verb) + "</span>" : "") +
+    '<span class="trunc target' + (lab.muted ? " sub" : "") + '" title="' + esc(lab.title || lab.text) + '">' + esc(lab.text) + "</span></div>" +
+    (o.tags.length || o.placeholder || o.discovery !== "STATIC" ? "<div>" + tagsHtml(o) + "</div>" : "") + "</div></td>";
+  cells += '<td><div class="trunc" title="' + esc(handler(o)) + '">' + handlerHtml(o) + '</div><div class="trunc sub mono" title="' + esc(where(o)) + '">' + esc(fileName(FILES[o.file]) + ":" + o.line) + "</div></td>";
+  if (showArea) cells += '<td class="area"><div class="trunc" title="' + esc(o.area) + '">' + esc(o.area) + "</div></td>";
+  cells += "<td>" + whyHtml(o) + "</td>";
+  return '<tr class="op' + (open ? " open" : "") + (o.colour !== "GREY" ? " has-verdict" : "") + '" data-id="' + esc(o.id) + '" tabindex="0" aria-expanded="' + open + '">' + cells + "</tr>" +
+    (open ? '<tr class="detail" data-for="' + esc(o.id) + '"><td colspan="' + COLS.length + '">' + detailHtml(o) + "</td></tr>" : "");
+}
+function render() {
+  var slice = filtered.slice(0, state.shown);
+  el("body").innerHTML = slice.length ? slice.map(rowHtml).join("")
+    : '<tr><td colspan="' + COLS.length + '"><div class="empty" style="margin:8px 0">' + (total ? "No operation matches these filters." : "No operations to list.") + "</div></td></tr>";
+  el("count").textContent = (slice.length < filtered.length ? "Showing " + fmt(slice.length) + " of " : "") + plural(filtered.length, "operation");
+  el("print-note").textContent = "Printed list: " + plural(slice.length, "operation") + " of " + fmt(total) + (filtersActive() ? ", filtered" : "") + ".";
+  el("more-row").classList.toggle("hidden", slice.length >= filtered.length);
+  el("more").textContent = "Show " + fmt(Math.min(CHUNK, filtered.length - slice.length)) + " more";
+  el("reset").classList.toggle("hidden", !filtersActive());
+  Array.prototype.forEach.call(el("head").querySelectorAll("th"), function (th) {
+    var k = th.getAttribute("data-key"), desc = k === "attention" || k === "status" || k === "why";
+    if (k === state.sort) th.setAttribute("aria-sort", (state.dir > 0) === desc ? "descending" : "ascending");
+    else th.removeAttribute("aria-sort");
+  });
+  Array.prototype.forEach.call(el("seg").querySelectorAll("button"), function (bt) {
+    bt.setAttribute("aria-pressed", String(bt.getAttribute("data-v") === state.seg));
+  });
+}
+
+var DISCOVERY_TEXT = {
+  STATIC: "found from declarations the scanner resolved exactly",
+  INFERRED: "found through a rule that can be wrong (inheritance, a naming convention, regex-only parsing)",
+  UNKNOWN: "present, but its target is not known from the sources"
+};
+function factsHtml(o) {
+  var rows = [];
+  function row(k, v) { if (v != null && v !== "") rows.push("<dt>" + esc(k) + "</dt><dd>" + v + "</dd>"); }
+  row("Kind", esc((KIND_LABEL[o.kind] || o.kind) + " · " + (SUBKIND_LABEL[o.subkind] || human(o.subkind))));
+  row("Target", '<span class="mono">' + brk(o.target) + "</span>");
+  row("Handler", '<span class="mono">' + brk(o.pkg ? o.pkg + "." : "") + "<b>" + brk(handler(o)) + "</b></span>");
+  row("Source", '<span class="mono">' + brk(where(o)) + "</span>");
+  if (o.module && o.module !== ".") row("Module", '<span class="mono">' + brk(o.module) + "</span>");
+  if (showArea) row(AREA_WORD, esc(o.area));
+  row("Discovery", '<span class="tag dim">' + esc(o.discovery.toLowerCase()) + "</span> " + esc(DISCOVERY_TEXT[o.discovery] || "") + (o.via && o.via.length ? '<div class="sub mono">via ' + brk(o.via.join(", ")) + "</div>" : ""));
+  var attrs = Object.keys(o.attrs || {}).filter(function (k) { return k !== "webhook"; });
+  if (attrs.length) row("Attributes", attrs.map(function (k) { var v = o.attrs[k]; return '<div><span class="sub">' + esc(k) + ':</span> <span class="mono">' + brk(typeof v === "object" ? JSON.stringify(v) : v) + "</span></div>"; }).join(""));
+  if (o.attrs && o.attrs.webhook) {
+    var w = o.attrs.webhook;
+    row("Webhook tag", '<span class="tag">' + esc(human(w.verdict)) + "</span>" + (w.confidence ? " " + esc(human(w.confidence)) + " confidence" : "") + (w.signals ? '<div class="sub">' + esc(w.signals.join(", ")) + "</div>" : ""));
+  }
+  if (o.mitigations.length) row("Mitigations seen", o.mitigations.map(function (m) { return '<span class="chip mit">' + esc(m) + "</span>"; }).join(" "));
+  row("Id", '<span class="mono">' + esc(o.id) + '</span> · <a href="#' + esc(o.id) + '" data-copy="' + esc(o.id) + '">copy link</a>');
+  return '<dl class="facts">' + rows.join("") + "</dl>";
+}
+function reachHtml(o) {
+  var r = o.reach;
+  if (!r.analysed) return '<p class="note">Call path not analysed. Kotlin files, files javac could not parse and synthetic entry points are scanned by patterns only, so nothing is known about what they call.</p>';
+  var s = "Read " + plural(r.methods, "method") + " in " + plural(r.files, "file") + ".";
+  if (r.beyond) s += " " + plural(r.beyond, "call") + " went deeper than the scan reads and " + (r.beyond === 1 ? "was" : "were") + " not followed.";
+  if (r.budgetHit) s += " The walk stopped at its method budget.";
+  else if (r.truncated) s += " Some implementations or overloads beyond the first three were not read.";
+  return '<p class="note">' + esc(s) + "</p>";
+}
+function effectsTable(o) {
+  var order = {};
+  SIGNAL_ORDER.forEach(function (s, i) { order[s] = i; });
+  var list = o.effects.slice().sort(function (x, y) { return (x.s in order ? order[x.s] : 99) - (y.s in order ? order[y.s] : 99) || x.hop - y.hop; });
+  return '<table class="effects">' + list.map(function (e) {
+    return "<tr><td>" + chip(e.s) + "</td><td>" + esc(e.d) + '<div class="sub mono">' + esc(fileName(FILES[e.f]) + ":" + e.l) + " · " + brk(e.sym) + "</div>" +
+      (e.code ? '<pre class="code">' + esc(e.code) + "</pre>" : "") + "</td><td>" + hopBadges(e) + "</td></tr>";
+  }).join("") + "</table>";
+}
+function findingHtml(fd) {
+  var h = '<div class="finding"><h5>' + esc(fd.ruleId) + " · " + esc(fd.title || "") + ' <span class="badge">severity ' + esc(human(fd.severity)) + '</span><span class="badge">' + esc(human(fd.status)) + '</span><span class="badge">confidence ' + esc(human(fd.confidence)) + "</span></h5>";
+  h += "<p><strong>Failure scenario.</strong> " + esc(fd.failureScenario) + "</p>";
+  arr(fd.evidence).forEach(function (e) {
+    h += '<div class="evi"><div class="where"><span class="loc mono">' + esc(fileName(e.file)) + ":" + esc(e.line) + "</span>" + (e.symbol ? '<span class="mono">' + brk(e.symbol) + "</span>" : "") + (e.claim ? "<span>" + esc(e.claim) + "</span>" : "") + "</div>" + (e.snippet ? "<pre>" + esc(String(e.snippet).trim()) + "</pre>" : "") + "</div>";
+  });
+  if (arr(fd.mitigationsChecked).length) h += '<p><strong>Mitigations checked.</strong></p><ul class="sub">' + fd.mitigationsChecked.map(function (m) { return "<li>" + esc(m.name) + ": <strong>" + esc(human(m.result)) + "</strong>" + (m.where ? " (" + esc(m.where) + ")" : "") + "</li>"; }).join("") + "</ul>";
+  if (fd.recommendation) h += "<p><strong>Fix.</strong> " + esc(fd.recommendation) + "</p>";
+  if (arr(fd.verification).length) h += '<p><strong>How to verify.</strong></p><ul class="sub">' + fd.verification.map(function (v) { return "<li>" + esc(v) + "</li>"; }).join("") + "</ul>";
+  if (fd.verifiedBy) h += '<p class="note">Verified by ' + esc(fd.verifiedBy.model) + " in " + esc(fd.verifiedBy.run) + ": " + esc(human(fd.verifiedBy.outcome)) + (fd.verifiedBy.note ? ". " + esc(sentence(fd.verifiedBy.note)) : "") + "</p>";
+  return h + "</div>";
+}
+function flowHtml(id) {
+  var fl = D.flows[id];
+  if (!fl) return '<p class="note">Flow <code>' + esc(id) + "</code> is referenced by the verdict, but its file is missing. The findings stand on their own evidence.</p>";
+  var h = "<p><strong>" + esc(fl.title || fl.id) + "</strong></p>";
+  arr(fl.hops).forEach(function (x) { h += '<div class="hop">' + esc(x.order + ". " + x.symbol + (x.tx ? "  [" + x.tx + "]" : "") + (x.thread ? "  (" + x.thread + ")" : "")) + "</div>"; });
+  if (arr(fl.boundaries).length) {
+    h += '<p class="note"><strong>Boundaries</strong></p>';
+    fl.boundaries.forEach(function (x) { h += '<div class="hop">' + esc(x.order + ". " + human(x.type) + "  " + x.symbol + (x.target ? " → " + x.target : "") + "  durable: " + (x.durable === true ? "yes" : x.durable === false ? "no" : "unknown")) + "</div>"; });
+  }
+  if (fl.acknowledgement) h += '<p class="note"><strong>Acknowledged</strong> (durable before: ' + (fl.acknowledgement.durableBefore === true ? "yes" : fl.acknowledgement.durableBefore === false ? "no" : "unknown") + "): " + esc(fl.acknowledgement.description) + "</p>";
+  return h;
+}
+function detailHtml(o) {
+  var left = "";
+  if (o.verdict) {
+    var v = o.verdict;
+    left += '<div class="dcard"><h4>Audit verdict</h4><p>' + statusPill(o.colour) + " " + esc(human(v.tier)) + (v.model ? " · " + esc(v.model) : "") + "</p><p>" + esc(v.summary || "") + "</p>" +
+      arr(o.findings).map(findingHtml).join("") +
+      (v.flowId ? '<h4 style="margin-top:14px">Flow</h4>' + flowHtml(v.flowId) : "") + "</div>";
+  }
+  left += '<div class="dcard"><h4>' + (o.reasons.length ? "Why it has a hint" : "What the scanner read") + "</h4>";
+  if (o.reasons.length) {
+    var shown = {};
+    left += o.reasons.map(function (r) {
+      var fresh = r.ev.filter(function (i) { return !shown[i]; }), seen = r.ev.filter(function (i) { return shown[i]; });
+      fresh.slice(0, 3).forEach(function (i) { shown[i] = true; });
+      return '<div class="reason"><div class="rt">' + levelPill(r.level) + esc(r.title) + "</div><p>" + esc(ruleText(r.code)) + "</p>" +
+        fresh.slice(0, 3).map(function (i) { return evidenceHtml(o, i, false); }).join("") +
+        (seen.length ? '<p class="note">Also: ' + seen.map(function (i) { var e = o.effects[i]; return '<span class="mono">' + esc(fileName(FILES[e.f]) + ":" + e.l) + "</span>"; }).join(", ") + " (shown above)</p>" : "") +
+        (fresh.length > 3 ? '<p class="note">+ ' + plural(fresh.length - 3, "more place") + " in the list below</p>" : "") + "</div>";
+    }).join("");
+  } else {
+    left += '<p class="sub" style="margin:0">' + (o.reach.analysed ? "No risk pattern on the path the scanner read." : "No hint: the call path was not analysed.") + "</p>";
+  }
+  left += reachHtml(o) + "</div>";
+  if (o.effects.length) left += '<details class="dcard"' + (o.effects.length <= 6 ? " open" : "") + "><summary><h4>Everything seen on the path · " + o.effects.length + "</h4></summary>" + effectsTable(o) + "</details>";
+  return '<div class="detail-grid"><div class="dcol">' + left + '</div><div class="dcard"><h4>Operation</h4>' + factsHtml(o) + "</div></div>";
+}
+
+function find(id) { for (var i = 0; i < OPS.length; i++) if (OPS[i].id === id) return OPS[i]; return null; }
+function toggle(id, force) {
+  var o = find(id);
+  if (!o) return;
+  var tr = el("body").querySelector('tr.op[data-id="' + id + '"]');
+  var det = el("body").querySelector('tr.detail[data-for="' + id + '"]');
+  if (det && force !== true) {
+    det.parentNode.removeChild(det);
+    tr.classList.remove("open"); tr.setAttribute("aria-expanded", "false");
+    delete state.open[id];
+    return;
+  }
+  if (!tr || det) return;
+  state.open[id] = true;
+  tr.classList.add("open"); tr.setAttribute("aria-expanded", "true");
+  tr.insertAdjacentHTML("afterend", '<tr class="detail" data-for="' + esc(id) + '"><td colspan="' + COLS.length + '">' + detailHtml(o) + "</td></tr>");
+}
+function scrollToRow(tr) {
+  var tb = document.querySelector(".toolbar"), head = document.querySelector(".top");
+  var offset = head.offsetHeight + (getComputedStyle(tb).position === "sticky" ? tb.offsetHeight : 0) + 8;
+  window.scrollTo({top: tr.getBoundingClientRect().top + window.scrollY - offset});
+  tr.classList.add("flash");
+  setTimeout(function () { tr.classList.remove("flash"); }, 1700);
+}
+/** Shows one operation in the table: clears filters only when they would hide it. */
+function openOp(id) {
+  var o = find(id);
+  if (!o) return;
+  if (filtered.indexOf(o) < 0) {
+    el("q").value = ""; state.seg = "";
+    SELECTS.forEach(function (x) { el(x).value = ""; });
+    apply();
+  }
+  var pos = filtered.indexOf(o);
+  if (pos >= state.shown) { state.shown = pos + 1; render(); }
+  toggle(id, true);
+  var tr = el("body").querySelector('tr.op[data-id="' + id + '"]');
+  if (tr) scrollToRow(tr);
+}
+
+el("body").addEventListener("click", function (e) {
+  var copy = e.target.closest("a[data-copy]");
+  if (copy) {
+    e.preventDefault();
+    var id = copy.getAttribute("data-copy"), url = location.href.split("#")[0] + "#" + id;
+    var done = function () { copy.textContent = "copied"; }, fail = function () { location.hash = id; };
+    try { navigator.clipboard.writeText(url).then(done, fail); } catch (err) { fail(); }
+    return;
+  }
+  if (e.target.closest("tr.detail")) return;
+  var tr = e.target.closest("tr.op");
+  if (tr) toggle(tr.getAttribute("data-id"));
+});
+el("body").addEventListener("keydown", function (e) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  var tr = e.target.closest("tr.op");
+  if (!tr || e.target !== tr) return;
+  e.preventDefault();
+  toggle(tr.getAttribute("data-id"));
+});
+function cardOpen(e) {
+  var c = e.target.closest("[data-open]");
+  if (!c) return;
+  if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  openOp(c.getAttribute("data-open"));
+}
+el("top").addEventListener("click", cardOpen);
+el("top").addEventListener("keydown", cardOpen);
+function listFilter(e) {
+  var tr = e.target.closest("tr.click");
+  if (!tr) return;
+  if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  el("q").value = ""; state.seg = "";
+  SELECTS.forEach(function (x) { el(x).value = ""; });
+  if (tr.getAttribute("data-reason")) el("f-reason").value = tr.getAttribute("data-reason");
+  if (tr.getAttribute("data-area")) el("f-area").value = tr.getAttribute("data-area");
+  apply();
+  el("operations").scrollIntoView();
+}
+["patterns-table", "areas-table"].forEach(function (id) {
+  el(id).addEventListener("click", listFilter);
+  el(id).addEventListener("keydown", listFilter);
+});
+var debounce;
+el("q").addEventListener("input", function () { clearTimeout(debounce); debounce = setTimeout(function () { apply(); }, 120); });
+SELECTS.forEach(function (id) { el(id).addEventListener("change", function () { apply(); }); });
+el("seg").addEventListener("click", function (e) {
+  var bt = e.target.closest("button[data-v]");
+  if (!bt) return;
+  state.seg = bt.getAttribute("data-v");
+  apply();
+});
+el("head").addEventListener("click", function (e) {
+  var th = e.target.closest("th[data-key]");
+  if (!th) return;
+  var k = th.getAttribute("data-key");
+  if (state.sort === k) state.dir = -state.dir; else { state.sort = k; state.dir = 1; }
+  apply();
+});
+el("more").addEventListener("click", function () { state.shown += CHUNK; render(); });
+el("reset").addEventListener("click", function () {
+  el("q").value = ""; state.seg = ""; state.sort = "attention"; state.dir = 1;
+  SELECTS.forEach(function (x) { el(x).value = ""; });
+  apply();
+});
+window.addEventListener("beforeprint", function () { state.shown = filtered.length; render(); });
+window.addEventListener("afterprint", function () { state.shown = CHUNK; render(); });
+
+(function () {
+  el("spots").innerHTML = SPOTS.map(function (s) {
+    return '<div class="spot' + (s.specific ? " specific" : "") + '"><h3>' + esc(s.title) + "</h3><p>" + esc(s.text) + "</p>" +
+      (s.raw && s.raw !== s.text ? '<details><summary>Scanner message</summary><div class="mono">' + esc(s.raw) + "</div></details>" : "") + "</div>";
+  }).join("");
+  var ua = D.unresolvedAnnotations || [];
+  if (ua.length) {
+    el("annotations").innerHTML = '<details class="more"><summary>' + plural(ua.length, "unresolved entry-like annotation") + '</summary><div class="panel" style="margin-top:10px"><table class="list"><tr><th>Annotation</th><th class="n">Uses</th><th>Example</th></tr>' +
+      ua.slice(0, 40).map(function (u) { return '<tr><td class="mono">' + esc(u.annotation) + '</td><td class="n">' + fmt(u.count) + '</td><td class="sub mono trunc" style="max-width:520px" title="' + esc((u.samples || [])[0]) + '">' + esc((u.samples || [])[0]) + "</td></tr>"; }).join("") + "</table></div></details>";
+  }
+})();
+
+if (audited && arr(cov.runs).length) {
+  el("coverage-section").classList.remove("hidden");
+  var h = '<div class="panel"><table class="list"><tr><th>Run</th><th>Tier</th><th>Agent</th><th>Model</th><th class="n">USD</th><th>Status</th></tr>';
+  cov.runs.forEach(function (r) {
+    h += '<tr><td class="mono">' + esc(r.id) + "</td><td>" + esc(human(r.tier)) + "</td><td>" + esc(r.agent || r.tool || "") + '</td><td class="sub">' + esc(r.model || "—") + '</td><td class="n">' + (r.usd != null ? Number(r.usd).toFixed(2) : "—") + "</td><td>" + esc(human(r.status)) + (r.reason ? ' <span class="sub">(' + esc(r.reason) + ")</span>" : "") + "</td></tr>";
+  });
+  h += "</table>";
+  var pending = arr(cov.pending).map(function (p) { return typeof p === "string" ? p : p.id; }).filter(Boolean);
+  if (pending.length) h += '<p class="note">' + plural(pending.length, "operation") + " planned but not run: " + pending.slice(0, 12).map(function (id) { return '<a href="#' + esc(id) + '">' + esc(id) + "</a>"; }).join(", ") + (pending.length > 12 ? ", …" : "") + "</p>";
+  el("coverage").innerHTML = h + "</div>";
+}
+
+el("glossary").innerHTML = SIGNAL_ORDER.map(function (s) { return chip(s) + "<div>" + esc(SIGNALS[s].text) + "</div>"; }).join("");
+
+window.addEventListener("hashchange", function () {
+  var id = location.hash.slice(1);
+  if (/^EP-[0-9a-f]+$/.test(id)) openOp(id);
+});
+document.addEventListener("click", function (e) {
+  var link = e.target.closest('a[href^="#EP-"]');
+  if (!link || link.hasAttribute("data-copy")) return;
+  e.preventDefault();
+  var id = link.getAttribute("href").slice(1);
+  if (history.replaceState) history.replaceState(null, "", "#" + id);
+  openOp(id);
+});
+apply();
+if (/^#EP-[0-9a-f]+$/.test(location.hash)) openOp(location.hash.slice(1));
+})();
+</script>
+</body>
+</html>

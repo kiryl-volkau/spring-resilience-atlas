@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "flow.schema.json",
+  "title": "Flow",
+  "description": ".reliability/flows/<id>.json, written by the flow-tracer agent. Facts only; reliability verdicts belong to findings.",
+  "type": "object",
+  "required": ["id", "commit", "entrypoint", "hops", "boundaries", "acknowledgement", "sourceBudget", "openQuestions"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^FLOW-[a-z0-9-]+$"},
+    "title": {"type": "string"},
+    "commit": {"type": ["string", "null"], "description": "Commit the atlas was built from."},
+    "domain": {"type": ["string", "null"]},
+    "entrypoint": {
+      "type": "object",
+      "required": ["id", "kind", "target", "symbol"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"type": "string"},
+        "target": {"type": "string"},
+        "symbol": {"type": "string"}
+      }
+    },
+    "hops": {"type": "array", "items": {"$ref": "#/$defs/hop"}},
+    "boundaries": {"type": "array", "items": {"$ref": "#/$defs/boundary"}},
+    "acknowledgement": {
+      "type": "object",
+      "required": ["description", "durableBefore"],
+      "properties": {
+        "description": {"type": "string", "description": "When and how the caller learns the work was accepted."},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "durableBefore": {"type": ["boolean", "null"], "description": "Whether all accepted work has crossed a durable boundary before the acknowledgement; null if unknown."}
+      }
+    },
+    "stoppedAt": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "reason"],
+        "properties": {"symbol": {"type": "string"}, "reason": {"type": "string"}}
+      },
+      "description": "Calls deliberately not followed, with the reason."
+    },
+    "sourceBudget": {
+      "type": "object",
+      "required": ["filesOpened", "limit"],
+      "properties": {
+        "filesOpened": {"type": "integer"},
+        "limit": {"type": "integer"},
+        "expansions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["reason", "files"],
+            "properties": {"reason": {"type": "string"}, "files": {"type": "array", "items": {"type": "string"}}}
+          }
+        }
+      }
+    },
+    "openQuestions": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "required": ["file", "line", "snippet"],
+      "properties": {
+        "file": {"type": "string", "description": "Repository-relative path."},
+        "line": {"type": "integer", "minimum": 1},
+        "snippet": {"type": "string", "description": "One line copied verbatim from file:line; checked by verify-evidence."}
+      }
+    },
+    "hop": {
+      "type": "object",
+      "required": ["order", "symbol", "evidence"],
+      "properties": {
+        "order": {"type": "integer"},
+        "symbol": {"type": "string", "description": "Class.method"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "tx": {"type": ["string", "null"], "description": "Transaction id (T1, T2, ...) active in this hop."},
+        "thread": {"type": ["string", "null"], "description": "Caller, or the async boundary that started this hop's thread."},
+        "notes": {"type": "string"}
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "required": ["order", "type", "symbol", "evidence"],
+      "properties": {
+        "order": {"type": "integer"},
+        "type": {"enum": ["TX_BEGIN", "TX_COMMIT", "DB_WRITE", "MESSAGE_SEND", "MESSAGE_ACK", "EVENT_PUBLISH", "EVENT_LISTENER", "ASYNC_FORK", "EXTERNAL_CALL", "CACHE_WRITE", "FILE_WRITE", "LOCK", "RESPONSE"]},
+        "symbol": {"type": "string"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "target": {"type": ["string", "null"], "description": "Table, queue, topic, URL or cache the boundary touches, when known."},
+        "tx": {"type": ["string", "null"]},
+        "durable": {"type": ["boolean", "null"], "description": "Whether this boundary survives a process crash; null if unknown."},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}

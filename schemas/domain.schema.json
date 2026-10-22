@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "domain.schema.json",
+  "title": "Domain",
+  "description": "One line of .reliability/atlas/domains.jsonl, written by the domain-cartographer skill and corrected by people. A class belongs to the domain with the longest matching package prefix.",
+  "type": "object",
+  "required": ["domain", "packages", "confidence"],
+  "properties": {
+    "domain": {"type": "string", "minLength": 1},
+    "packages": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "signals": {"type": "array", "items": {"type": "string"}, "description": "What supports the mapping: route prefixes, entities, queue names, module names."},
+    "uncertain": {"type": "array", "items": {"type": "string"}, "description": "Packages or classes that may belong to another domain."}
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "entrypoint.schema.json",
+  "title": "Entry point",
+  "description": "One line of .reliability/atlas/entrypoints.jsonl. Field semantics: entrypoint-rules.md.",
+  "type": "object",
+  "required": ["id", "kind", "subkind", "target", "module", "cls", "method", "file", "line", "anno", "status", "origin", "via", "placeholder", "attrs"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^EP-[0-9a-f]{8}([0-9a-f]{4})?$"},
+    "kind": {"enum": ["HTTP", "MESSAGING", "SCHEDULED", "EVENT", "LIFECYCLE", "SOAP", "JOB", "WEBSOCKET", "GRAPHQL", "GRPC", "ACTUATOR", "ROUTER", "PORTLET"]},
+    "subkind": {"type": "string"},
+    "target": {"type": "string"},
+    "module": {"type": "string"},
+    "cls": {"type": "string"},
+    "method": {"type": "string"},
+    "file": {"type": "string"},
+    "line": {"type": "integer", "minimum": 0},
+    "anno": {"type": "string"},
+    "status": {"enum": ["STATIC", "INFERRED", "UNKNOWN", "RUNTIME_CONFIRMED"]},
+    "origin": {"enum": ["SOURCE", "GENERATED", "KOTLIN", "FALLBACK"]},
+    "via": {"type": "array", "items": {"type": "string"}},
+    "placeholder": {"type": "boolean"},
+    "attrs": {"type": "object"}
+  }
+}

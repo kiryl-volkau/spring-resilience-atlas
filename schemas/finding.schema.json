@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finding.schema.json",
+  "title": "Finding",
+  "description": "One reliability finding: an evidence packet, not an opinion. Written by audit skills as CANDIDATE; only the verifier sets VERIFIED or DISPROVED.",
+  "type": "object",
+  "required": ["id", "ruleId", "commit", "flowId", "severity", "confidence", "status", "failureScenario", "evidence", "mitigationsChecked", "sourceBudget", "recommendation", "verification", "dedupeKey"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^F-[0-9a-f]{8}$"},
+    "ruleId": {"type": "string", "pattern": "^[A-Z]{2,5}-[0-9]{3}$", "description": "Rule from the audit skill's rule file, e.g. DUR-001."},
+    "commit": {"type": ["string", "null"]},
+    "domain": {"type": ["string", "null"]},
+    "flowId": {"type": "string"},
+    "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"], "description": "How bad if true."},
+    "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"], "description": "How sure it is real. Any NOT_CHECKED mitigation or unverifiable evidence caps it at MEDIUM."},
+    "status": {"enum": ["CANDIDATE", "VERIFIED", "DISPROVED", "DUPLICATE"]},
+    "failureScenario": {"type": "string", "description": "One concrete interleaving, naming the two points between which the failure happens."},
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "snippet", "claim"],
+        "properties": {
+          "file": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1},
+          "snippet": {"type": "string"},
+          "symbol": {"type": "string"},
+          "claim": {"type": "string", "description": "What this line proves."}
+        }
+      }
+    },
+    "mitigationsChecked": {
+      "type": "array",
+      "description": "Every mitigation the rule lists, with what was found.",
+      "items": {
+        "type": "object",
+        "required": ["name", "result"],
+        "properties": {
+          "name": {"type": "string"},
+          "result": {"enum": ["FOUND", "NOT_FOUND", "NOT_CHECKED"]},
+          "where": {"type": "string", "description": "Where it was looked for."},
+          "evidence": {"type": "object"}
+        }
+      }
+    },
+    "sourceBudget": {
+      "type": "object",
+      "required": ["filesOpened", "limit"],
+      "properties": {"filesOpened": {"type": "integer"}, "limit": {"type": "integer"}, "expanded": {"type": "boolean"}}
+    },
+    "blastRadius": {
+      "type": "object",
+      "properties": {"domains": {"type": "array", "items": {"type": "string"}}, "effects": {"type": "array", "items": {"type": "string"}}}
+    },
+    "recommendation": {"type": "string"},
+    "verification": {"type": "array", "minItems": 1, "items": {"type": "string"}, "description": "Failure-injection or test steps that would prove or disprove the finding."},
+    "dedupeKey": {"type": "string", "description": "ruleId|flowId|primary symbol; equal keys are one finding."}
+  }
+}
