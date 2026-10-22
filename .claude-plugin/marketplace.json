@@ -1,5 +1,6 @@
 {
   "name": "resilience-atlas",
+  "description": "Reliability tooling for large Spring Boot applications.",
   "owner": {
     "name": "Kiryl Volkau"
   },

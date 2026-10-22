@@ -14,12 +14,48 @@ architecture and gives different coverage on every run. This plugin instead:
 3. runs small, narrow audit skills that query the atlas and open only the code needed to
    prove or disprove one reliability hypothesis for one flow.
 
+![The report on the synthetic golden fixture](assets/report.png)
+
 > **Status: scaffold.** The entry-point atlas, the effect analysis and the HTML report work:
 > scanner, query CLI, the report and four phase-1 skills. The audit skills that turn hints into
 > verdicts are not built yet. The full rationale is in
 > [`sources/deep-research-report(10).md`](sources/deep-research-report(10).md), and the
 > implementation choices are in the
 > [2026-10-22 spike](sources/spikes/2026-10-22-summary.md).
+
+## Install
+
+You need Claude Code and a JDK 17 or newer on `PATH`. The scanner parses Java with the JDK's
+own compiler, so a JRE is not enough.
+
+In a Claude Code session:
+
+```text
+/plugin install resilience-audit --marketplace kiryl-volkau/spring-resilience-atlas
+```
+
+Or from a shell:
+
+```bash
+claude plugin marketplace add kiryl-volkau/spring-resilience-atlas
+claude plugin install resilience-audit@resilience-atlas
+```
+
+Then open a Spring repository in Claude Code and run `/resilience-audit:report`. The skills
+need a local shell and a JDK, so they work in Claude Code, not in claude.ai chat.
+
+### What the plugin runs
+
+- **The scanner, from source.** Skills run `java <plugin>/scanner/Launch.java`. On first use
+  it compiles the bundled scanner sources with the JDK's compiler into the plugin's data
+  directory (`~/.resilience-atlas` when that is unavailable) and reuses the build until the
+  plugin changes. The plugin ships no compiled code.
+- **Local files only.** The scanner reads the source files of the repository you opened and
+  writes only `.reliability/` inside it. `report --open` opens the generated page in your
+  browser.
+- **No network.** Nothing is downloaded or sent anywhere, and there is no telemetry. Claude
+  reads the scanner's output, and audit skills open the files needed for one hypothesis, as
+  in any Claude Code session.
 
 ## How it works
 
@@ -103,7 +139,7 @@ Measured on real repositories:
 
 ## The report
 
-`/resilience-audit:report` runs one jar command, `report --scan --open`. It writes
+`/resilience-audit:report` runs one scanner command, `report --scan --open`. It writes
 `.reliability/report.html`, a single self-contained page with no network access:
 
 - a one-sentence headline;
@@ -158,24 +194,26 @@ the application:
 ## Layout
 
 ```text
-.claude-plugin/plugin.json   plugin manifest
+.claude-plugin/plugin.json   plugin manifest; marketplace.json lists it for installation
 skills/<skill>/SKILL.md      atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, report
 agents/flow-tracer.md        forked agent behind critical-flow-tracer
 references/atlas-cli.md      the query CLI's commands, filters and output contract
-scanner/                     atlas builder and query CLI: one dependency-free Java jar
+scanner/                     atlas builder and query CLI: dependency-free Java, run from source by Launch.java
 schemas/                     entry-point rules, and entrypoint/domain/flow/finding JSON schemas
 fixtures/spring-golden/      synthetic Spring app with hand-written expected entry points
 evals/                       golden test, claude plugin eval cases, local corpus notes
 sources/                     design research and spikes
+assets/                      icon and screenshot
 ```
 
 ## Decisions
 
 These follow the [2026-10-22 spike](sources/spikes/2026-10-22-summary.md):
 
-- **Scanner.** Java on the JDK's own javac Tree API, built as a dependency-free jar invoked
-  as `java -jar`. It needs a JDK 17+ on `PATH`. Unlike JavaParser, javac never lags the
-  target's Java version and needs no Maven download.
+- **Scanner.** Java on the JDK's own javac Tree API, with no dependencies. The plugin ships
+  its sources, and `scanner/Launch.java` compiles them on first use, so a directory listing
+  carries no binaries and nobody needs Maven. It needs a JDK 17+ on `PATH`. Unlike
+  JavaParser, javac never lags the target's Java version.
 - **Storage.** JSONL that skills never load whole. The CLI prints a summary line, then TSV
   projections, 50 rows by default.
 - **Models.** Haiku for the mechanical catalog skills, Sonnet for domain mapping, Opus for
@@ -185,13 +223,12 @@ Still open:
 
 - **Atlas location.** Commit `.reliability/` in the audited repository, or keep it local and
   rebuild it.
-- **Shipping the jar.** `scanner/dist/` is git-ignored during development. A release has to
-  either commit the jar or attach it for download into `${CLAUDE_PLUGIN_DATA}`.
 
 ## Development
 
 ```bash
-mvn -o -q -f scanner/pom.xml package     # builds scanner/dist/resilience-atlas.jar
+java scanner/Launch.java version         # runs the scanner from source, as the skills do
+mvn -o -q -f scanner/pom.xml package     # builds scanner/dist/resilience-atlas.jar for the golden test
 java -cp scanner/dist/resilience-atlas.jar scanner/src/test/java/studio/volkoff/atlas/GoldenTest.java fixtures/spring-golden
 ```
 
