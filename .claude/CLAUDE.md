@@ -15,6 +15,8 @@ grep it for the section you need rather than reading it whole.
 - Reference plugin files through `${CLAUDE_PLUGIN_ROOT}`. At runtime the working directory
   is the audited Spring repository, not this one.
 - Scripts must run on Windows, macOS and Linux.
+- The plugin targets Anthropic's directory, which holds for manual review any file over
+  256 KiB (images excepted), any binary other than an image or font, and more than 512 files.
 - Test against a real Spring repository with `claude --plugin-dir <this repo>`; skills are
   invoked as `/resilience-audit:<skill>`, and `/reload-plugins` picks up edits.
 - The evaluation corpus and its rules are in `evals/corpus.md`, which is git-ignored because
@@ -24,9 +26,13 @@ grep it for the section you need rather than reading it whole.
 
 ## Scanner
 
-- `scanner/` builds one jar with **no dependencies**: parsing uses the JDK's javac Tree API,
-  and JSON is hand-rolled. Do not add libraries. Compile with `--release 17`.
-- Build with `mvn -o -q -f scanner/pom.xml package`. The pinned plugin versions resolve from
+- `scanner/` has **no dependencies**: parsing uses the JDK's javac Tree API, and JSON is
+  hand-rolled. Do not add libraries. Compile with `--release 17`.
+- The plugin ships sources, never the jar. Skills run `scanner/Launch.java`, which compiles
+  `src/main/java` plus the resources the pom bundles (`src/main/resources`, `schemas/`,
+  `references/`) on first use. Keep the two builds' inputs in step, and keep `Launch.java` a
+  single source file that runs on Java 17.
+- Build with `mvn -o -q -f scanner/pom.xml package` for the golden test. The pinned plugin versions resolve from
   the local cache, because the user's `~/.m2/settings.xml` points at an often unreachable
   corporate mirror.
 - `schemas/entrypoint-rules.md` is the contract for every entry-point record. Change the
