@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "commit": "a2bb8571f588571d5ba1616ad3fb74f93a4a5558",
+  "atlasScannedAt": "2026-10-22T17:26:29Z",
+  "startedAt": "2026-10-22T17:30:00Z",
+  "finishedAt": "2026-10-22T18:05:40Z",
+  "status": "PARTIAL",
+  "budget": {"usdCap": 12.0, "usdSpent": 9.4, "stoppedBecause": "budget cap reached with 7 escalated operations still queued for deep audit"},
+  "plan": {
+    "rankedBy": "preliminary.score desc, then domain criticality, then kind",
+    "deepCutoffScore": 45,
+    "deepCandidates": ["EP-9df71973", "EP-366d9b4b", "EP-7bd331e1", "EP-844c2ec2", "EP-8fc84cd5", "EP-523075f3", "EP-be2ff202", "EP-611c3a71", "EP-f2239582", "EP-cad2d078", "EP-49ca726f"]
+  },
+  "profiles": [
+    {"id": "durability", "version": "0.1", "rules": ["DUR-001", "DUR-004"]},
+    {"id": "transactions", "version": "0.1", "rules": ["TXN-002", "TXN-004"]},
+    {"id": "idempotency", "version": "0.1", "rules": ["IDP-001", "IDP-002", "IDP-003"]},
+    {"id": "messaging", "version": "0.1", "rules": ["MSG-003"]},
+    {"id": "external-dependencies", "version": "0.1", "rules": ["EXT-001"]}
+  ],
+  "runs": [
+    {"id": "run-scan", "tier": "STATIC", "tool": "resilience-atlas.jar scan", "operations": "all", "usd": 0, "startedAt": "2026-10-22T17:26:29Z", "endedAt": "2026-10-22T17:26:30Z", "status": "DONE"},
+    {"id": "run-classify", "tier": "STATIC", "tool": "resilience-atlas.jar classify", "operations": "all", "usd": 0, "startedAt": "2026-10-22T17:30:00Z", "endedAt": "2026-10-22T17:30:01Z", "status": "DONE"},
+    {"id": "run-triage-billing-1", "tier": "TRIAGE", "agent": "triage", "model": "claude-sonnet-5-5", "domain": "Billing", "operations": ["EP-3692ecb2", "EP-523075f3", "EP-be2ff202", "EP-48bb96e3", "EP-5562a602", "EP-db2857c3", "EP-fc5d6bb6", "EP-59cf5fdc", "EP-8fc84cd5", "EP-2683e0af", "EP-a6993740", "EP-611c3a71"], "usd": 0.11, "startedAt": "2026-10-22T17:30:05Z", "endedAt": "2026-10-22T17:31:10Z", "status": "DONE"},
+    {"id": "run-triage-resident-1", "tier": "TRIAGE", "agent": "triage", "model": "claude-sonnet-5-5", "domain": "Resident", "operations": ["EP-7bd331e1", "EP-42cf7034", "EP-247631fc", "EP-80d9926c", "EP-26161058", "EP-49ca726f", "EP-f2239582"], "usd": 0.09, "startedAt": "2026-10-22T17:30:05Z", "endedAt": "2026-10-22T17:31:02Z", "status": "DONE"},
+    {"id": "run-triage-crm-1", "tier": "TRIAGE", "agent": "triage", "model": "claude-sonnet-5-5", "domain": "CRM", "operations": ["EP-420fb60d", "EP-e6e1bc62", "EP-cad2d078", "EP-bbee4d2e"], "usd": 0.06, "startedAt": "2026-10-22T17:30:05Z", "endedAt": "2026-10-22T17:30:50Z", "status": "DONE"},
+    {"id": "run-triage-dailycare-1", "tier": "TRIAGE", "agent": "triage", "model": "claude-sonnet-5-5", "domain": "DailyCare", "operations": ["EP-844c2ec2"], "usd": 0.04, "startedAt": "2026-10-22T17:30:05Z", "endedAt": "2026-10-22T17:30:40Z", "status": "DONE"},
+    {"id": "run-deep-01", "tier": "DEEP", "agent": "flow-tracer, reliability-auditor", "model": "claude-opus-5-5 (trace), claude-fable-5-1 (audit)", "operations": ["EP-9df71973"], "flowId": "FLOW-billing-stripe-webhook", "profiles": ["durability", "transactions", "idempotency"], "usd": 3.1, "startedAt": "2026-10-22T17:32:00Z", "endedAt": "2026-10-22T17:38:30Z", "status": "DONE"},
+    {"id": "run-deep-02", "tier": "DEEP", "agent": "flow-tracer, reliability-auditor", "model": "claude-opus-5-5 (trace), claude-fable-5-1 (audit)", "operations": ["EP-366d9b4b", "EP-1dd62f07", "EP-ae017b98"], "flowId": "FLOW-billing-invoice-consumer", "profiles": ["transactions", "idempotency", "messaging", "external-dependencies"], "usd": 3.3, "startedAt": "2026-10-22T17:32:00Z", "endedAt": "2026-10-22T17:39:10Z", "status": "DONE"},
+    {"id": "run-verify-01", "tier": "VERIFY", "agent": "finding-verifier", "model": "claude-opus-5-5", "findings": ["F-1a2b3c01", "F-1a2b3c02", "F-1a2b3c03", "F-1a2b3c04", "F-1a2b3c05", "F-1a2b3c06", "F-1a2b3c07"], "usd": 2.7, "startedAt": "2026-10-22T17:40:00Z", "endedAt": "2026-10-22T17:52:00Z", "status": "DONE", "outcome": {"confirmed": 7, "disproved": 0}},
+    {"id": "run-deep-03", "tier": "DEEP", "operations": ["EP-8fc84cd5", "EP-523075f3", "EP-be2ff202", "EP-611c3a71", "EP-f2239582", "EP-cad2d078", "EP-49ca726f"], "status": "NOT_STARTED", "reason": "budget cap reached"}
+  ],
+  "pending": [
+    {"id": "EP-8fc84cd5", "reason": "escalated by triage; deep audit not started (budget cap)"},
+    {"id": "EP-523075f3", "reason": "escalated by triage; deep audit not started (budget cap)"},
+    {"id": "EP-be2ff202", "reason": "escalated by triage; deep audit not started (budget cap)"},
+    {"id": "EP-611c3a71", "reason": "escalated by triage; deep audit not started (budget cap)"},
+    {"id": "EP-f2239582", "reason": "escalated by triage; deep audit not started (budget cap)"},
+    {"id": "EP-cad2d078", "reason": "escalated by triage; deep audit not started (budget cap)"},
+    {"id": "EP-49ca726f", "reason": "escalated by triage; deep audit not started (budget cap)"},
+    {"id": "EP-844c2ec2", "reason": "escalated by triage; deep audit not started (budget cap)"}
+  ],
+  "limits": [
+    "Triage reads the entry method and one hop of its dependencies. GREEN at the TRIAGE tier means no risk signal was found there, not that the operation is proven safe.",
+    "Only the Billing, Resident, CRM and DailyCare domains were triaged; Legacy and Platform were not (below the rank cut-off).",
+    "Queue configuration (DLQ, FIFO, visibility timeout), Flyway DDL and application.yml are outside the repository scan; mitigations that live there are NOT_CHECKED.",
+    "Kotlin files are scanned by regex: the CareNoteController.kt records are INFERRED and their bodies were not read.",
+    "Two ResidentAdmissionController records point at a generated interface that is missing from the sources; their HTTP targets are unknown until the project is built."
+  ]
+}

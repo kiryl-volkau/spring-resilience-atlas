@@ -1,0 +1,6 @@
+{"domain":"Billing","packages":["com.acme.care.billing"],"confidence":0.9,"criticality":"MONEY","signals":["route prefix /api/billing","entities Invoice, EventReceipt","queue care-invoice-events"]}
+{"domain":"Resident","packages":["com.acme.care.resident"],"confidence":0.85,"criticality":"STATE","signals":["route prefix /api/residents","queue ${care.resident.transfer-queue}"]}
+{"domain":"DailyCare","packages":["com.acme.care.dailycare"],"confidence":0.8,"criticality":"STATE","signals":["route prefix /api/dailycare","topic care.dailycare.vitals"]}
+{"domain":"CRM","packages":["com.acme.care.crm"],"confidence":0.8,"criticality":"NORMAL","signals":["route prefix /api/crm","topics care.crm.*"]}
+{"domain":"Legacy","packages":["com.acme.care.legacy"],"confidence":0.6,"criticality":"NORMAL","signals":["route prefix /api/legacy","JAX-WS services"],"uncertain":["com.acme.care.legacy.soap"]}
+{"domain":"Platform","packages":["com.acme.care.shared","com.acme.care"],"confidence":0.7,"criticality":"LOW","signals":["shared package"]}
