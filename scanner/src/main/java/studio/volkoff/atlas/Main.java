@@ -20,7 +20,7 @@ public final class Main {
     private static final String HELP = """
             resilience-atlas %s: static entry-point atlas for Spring repositories
 
-            java -jar resilience-atlas.jar <command> [options]
+            java scanner/Launch.java <command> [options]    (or: java -jar resilience-atlas.jar <command> [options])
 
               scan                         build .reliability/atlas for --repo (default .)
               report [--scan] [--open]     write .reliability/report.html from the atlas and any audit records;
@@ -101,7 +101,7 @@ public final class Main {
         }
         try (java.io.InputStream in = Main.class.getResourceAsStream("/docs/" + name)) {
             if (in == null) {
-                throw new IllegalStateException(name + " is missing from the jar; rebuild it with mvn package");
+                throw new IllegalStateException(name + " is missing from the scanner build");
             }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }

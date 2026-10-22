@@ -10,5 +10,5 @@ git init -q
 git -c core.autocrlf=false add -A
 git -c core.autocrlf=false -c user.email=eval@example.invalid -c user.name=eval commit -qm "golden fixture"
 if [[ "${1:-}" == "--scan" ]]; then
-  java -jar "$plugin_root/scanner/dist/resilience-atlas.jar" scan > /dev/null
+  java "$plugin_root/scanner/Launch.java" scan > /dev/null
 fi

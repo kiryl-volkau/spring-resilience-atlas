@@ -5,8 +5,8 @@ argument-hint: "<EP-id | /http/path | Class.method | queue>"
 context: fork
 agent: resilience-audit:flow-tracer
 allowed-tools:
-  - Bash(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
-  - PowerShell(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
+  - Bash(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
+  - PowerShell(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
   - Write(.reliability/flows/**)
   - Edit(.reliability/flows/**)
 ---
@@ -19,7 +19,7 @@ elsewhere, not even to the git root of a larger repository.
 Run the atlas CLI as one plain command per call:
 
 ```text
-java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" <command>
+java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" <command>
 ```
 
 The same jar prints the bundled references, so nothing outside this project has to be read:
@@ -41,7 +41,7 @@ The same jar prints the bundled references, so nothing outside this project has 
 3. **Verify the evidence.** Before you finish, run:
 
    ```text
-   java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" verify-evidence .reliability/flows/<FLOW-id>.json
+   java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" verify-evidence .reliability/flows/<FLOW-id>.json
    ```
 
    It exits non-zero and prints `FAILED` when any line is `MISMATCH`, `MALFORMED`, `TRIVIAL`

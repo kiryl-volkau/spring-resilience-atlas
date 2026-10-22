@@ -3,8 +3,8 @@ name: report
 description: Build the HTML resilience report of a Spring repository and open it. The page lists every operation (HTTP endpoints, message consumers, scheduled jobs, listeners, startup hooks) with the risk patterns found on its code path and the scan's blind spots. Use when the user asks for the report, an overview page of the application, or where the application can lose or duplicate work.
 argument-hint: "[repo-dir]"
 allowed-tools:
-  - Bash(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
-  - PowerShell(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
+  - Bash(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
+  - PowerShell(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
 model: haiku
 effort: low
 ---
@@ -15,7 +15,7 @@ when it is a module inside a larger git repository. Run exactly this one command
 opens it in the browser.
 
 ```text
-java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" report --scan --open
+java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" report --scan --open
 ```
 
 Add `--repo <dir>` only when the user named a directory: `$ARGUMENTS`.
@@ -41,8 +41,8 @@ If the command fails:
 
 - **`java` not found, or "javac is not available".** The scanner needs a JDK 17+ on `PATH`;
   a JRE is not enough.
-- **Jar missing.** The plugin was installed without a build. Build it with
-  `mvn -f "${CLAUDE_PLUGIN_ROOT}/scanner/pom.xml" package`.
+- **"Could not find or load main class" or "UnsupportedClassVersionError".** The `java` on
+  `PATH` is older than 17. Ask the user to put a JDK 17+ first on `PATH`.
 - **"could not open a browser here".** Give the user the url instead.
 
 `.reliability/` is a local, generated directory. Never stage or commit it, and never change

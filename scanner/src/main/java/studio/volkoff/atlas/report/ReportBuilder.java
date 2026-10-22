@@ -605,7 +605,7 @@ public final class ReportBuilder {
     private static String template() throws IOException {
         try (InputStream in = ReportBuilder.class.getResourceAsStream("/report/report.html")) {
             if (in == null) {
-                throw new IllegalStateException("report template is missing from the jar; rebuild it with mvn package");
+                throw new IllegalStateException("report template is missing from the scanner build");
             }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }

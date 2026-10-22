@@ -3,8 +3,8 @@ name: entrypoint-catalog
 description: Answer questions about a Spring app's entry points (HTTP endpoints, webhooks, queue consumers, scheduled jobs, event listeners, startup hooks, SOAP, WebSocket, GraphQL, gRPC) from the reliability atlas, by domain, module or package. Use instead of grepping for controllers or listeners.
 argument-hint: "[question]"
 allowed-tools:
-  - Bash(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
-  - PowerShell(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
+  - Bash(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
+  - PowerShell(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
 model: haiku
 effort: medium
 ---
@@ -15,7 +15,7 @@ Run every query as one plain command, exactly in this form, with no `cd`, variab
 chaining (only this form is pre-approved):
 
 ```text
-java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" <command> [options]
+java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" <command> [options]
 ```
 
 **Start with `stats`.**

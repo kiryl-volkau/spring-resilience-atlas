@@ -3,8 +3,8 @@ name: atlas-bootstrap
 description: Build or refresh the reliability atlas (.reliability/atlas) of a Spring repository with a deterministic scan of entry points and types. Use before any reliability audit, or when an atlas query reports the atlas missing or behind HEAD.
 argument-hint: "[repo-dir]"
 allowed-tools:
-  - Bash(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
-  - PowerShell(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
+  - Bash(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
+  - PowerShell(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
 model: haiku
 effort: low
 ---
@@ -17,7 +17,7 @@ module inside a larger git repository. Run exactly this one command, with no `cd
 checks beforehand. It reports a missing JDK or jar itself.
 
 ```text
-java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" scan
+java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" scan
 ```
 
 Add `--repo <dir>` only when the user named a directory: `$ARGUMENTS`.
@@ -50,8 +50,8 @@ If the command fails:
 
 - **`java` not found, or "javac is not available".** The scanner needs a JDK 17+ on `PATH`;
   a JRE is not enough.
-- **Jar missing.** The plugin was installed without a build. Build it with
-  `mvn -f "${CLAUDE_PLUGIN_ROOT}/scanner/pom.xml" package`.
+- **"Could not find or load main class" or "UnsupportedClassVersionError".** The `java` on
+  `PATH` is older than 17. Ask the user to put a JDK 17+ first on `PATH`.
 
 The atlas is a local, generated artifact. Never stage or commit it, and never change the
 repository's `.gitignore` unless the user asks.

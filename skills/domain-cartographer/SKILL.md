@@ -3,8 +3,8 @@ name: domain-cartographer
 description: Map a Spring monolith's packages to business domains (e.g. Billing, Resident, CRM) with confidence and write .reliability/atlas/domains.jsonl, so atlas queries can filter by domain. Use when asked what the business areas are, or before domain-scoped audits.
 argument-hint: "[known domain names]"
 allowed-tools:
-  - Bash(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
-  - PowerShell(java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" *)
+  - Bash(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
+  - PowerShell(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
 model: sonnet
 effort: medium
 ---
@@ -15,13 +15,13 @@ honestly rather than pretending to know.
 
 Domain names the user already uses: $ARGUMENTS
 
-Start with `java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" stats`. If the
+Start with `java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" stats`. If the
 atlas is missing or stale, run the `atlas-bootstrap` skill first.
 
 ## Signals
 
 Gather these from the atlas, not by reading the tree. Run each command as one plain
-`java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" <command>` call, with no
+`java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" <command>` call, with no
 `cd` and no chaining:
 
 - `packages`, and `packages --depth <N+1>` where one package is large;

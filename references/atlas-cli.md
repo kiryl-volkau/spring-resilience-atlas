@@ -1,9 +1,11 @@
 # Atlas CLI
 
-Every skill queries the atlas through one jar. It needs a JDK 17+ on `PATH` and nothing else.
+Every skill queries the atlas through one command, which runs the scanner from the plugin's
+sources. It needs a JDK 17+ on `PATH` and nothing else. The first run compiles the scanner,
+which takes a few seconds; the build is cached until the plugin changes.
 
 ```text
-java -jar "${CLAUDE_PLUGIN_ROOT}/scanner/dist/resilience-atlas.jar" <command> [options]
+java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" <command> [options]
 ```
 
 It works on the current directory, the project the user opened, even when that is a module

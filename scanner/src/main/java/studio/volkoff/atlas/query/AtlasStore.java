@@ -38,7 +38,7 @@ public final class AtlasStore {
         Path m = dir.resolve("manifest.json");
         if (!Files.exists(m)) {
             throw new Missing("atlas not found at " + dir + "; build it with the atlas-bootstrap skill "
-                    + "(java -jar resilience-atlas.jar scan --repo <repo>)");
+                    + "(the scanner's scan command)");
         }
         return new AtlasStore(repo, dir, Json.parseObject(Files.readString(m, StandardCharsets.UTF_8)));
     }
