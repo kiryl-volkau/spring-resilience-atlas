@@ -1,0 +1,14 @@
+target	symbol	level	required	forbidden
+/api/billing/webhooks/stripe	BillingWebhookController.receiveStripeEvent	HIGH	handoff-after-ack,async-in-tx,dual-write-in-tx,webhook-not-idempotent	webhook-sync-remote
+care-invoice-events	InvoiceEventListener.onInvoiceEvent	MEDIUM	remote-in-tx,consumer-not-idempotent	event-in-tx,dual-write-in-tx
+/api/patterns/after-commit	PatternsController.afterCommit	MEDIUM	dual-write	dual-write-in-tx
+/api/patterns/tx-template	PatternsController.txTemplate	HIGH	dual-write-in-tx	
+/api/patterns/overload	PatternsController.overload	MEDIUM	proxy-bypassed	handoff-after-ack,notification-handoff
+/api/patterns/parallel	PatternsController.parallel	NONE		handoff-after-ack
+/api/patterns/fire	PatternsController.fire	HIGH	handoff-after-ack	
+/api/patterns/wrapped	PatternsController.wrapped	LOW	async-response	handoff-after-ack
+/api/patterns/stream	PatternsController.stream	LOW	async-response	handoff-after-ack
+/api/patterns/pumped	PatternsController.pumped	MEDIUM	dual-write	handoff-after-ack
+LateFeeAccrualJob	LateFeeAccrualJob.execute	NONE		job-without-lock
+0 15 3 * * *	PharmacyStockScheduler.reorderLowStock	NONE		job-without-lock
+VIEW:save	ResidentAccountPortlet.saveAccount	MEDIUM	shared-field-write	

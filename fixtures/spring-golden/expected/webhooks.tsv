@@ -1,0 +1,9 @@
+target	symbol	verdict	confidence
+/api/billing/webhooks/stripe	BillingWebhookController.receiveStripeEvent	WEBHOOK	HIGH
+/api/integrations/github/webhook	GithubWebhookController.receive	WEBHOOK	HIGH
+/api/integrations/pharmacy/events	PharmacyIntegrationController.receiveDispenseEvent	WEBHOOK	MEDIUM
+/api/integrations/slack/callback	SlackIntegrationController.completeInstall	OAUTH_CALLBACK	
+/api/integrations/webhooks	WebhookSubscriptionController.listEndpoints	WEBHOOK_MANAGEMENT	
+/api/integrations/webhooks/secret	WebhookSubscriptionController.rotateSecret	WEBHOOK_MANAGEMENT	
+/api/public/deliveries	PublicSiteController.recordCourierStatus	WEBHOOK	MEDIUM
+/api/public/feedback	PublicSiteController.submitFeedback	UNAUTHENTICATED_WRITE	

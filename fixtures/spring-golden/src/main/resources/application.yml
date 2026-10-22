@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: care-platform
+  datasource:
+    url: jdbc:postgresql://localhost:5432/care
+    username: care
+  jpa:
+    open-in-view: false
+  cloud:
+    function:
+      definition: enrichContact;leadToContact;crmHeartbeat
+    aws:
+      region:
+        static: eu-west-2
+  kafka:
+    bootstrap-servers: localhost:9092
+
+care:
+  billing:
+    invoice-queue: care-invoice-events
+    payment-provider:
+      base-url: https://api.payments.example.com
+  resident:
+    transfer-queue: care-resident-transfers
+    sync-queue-url: https://sqs.eu-west-2.amazonaws.com/000000000000/care-resident-sync
+  crm:
+    import:
+      enabled: true
+  ledger:
+    base-url: http://ledger.internal:8080
+  legacy:
+    report-version: v1
