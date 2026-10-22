@@ -3,7 +3,7 @@ scanner/target/
 # Development build only: the plugin ships sources, and scanner/Launch.java compiles them on first use.
 scanner/dist/
 evals/results/
-# Work projects: the repository is public, so the corpus and the reviews that cite it stay local.
+# Local only: the work-project corpus, and the research notes, spikes and reviews.
 evals/corpus.md
-sources/reviews/*.md
+sources/
 .reliability/

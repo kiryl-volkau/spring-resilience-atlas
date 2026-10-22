@@ -56,7 +56,7 @@ Cases:
 with `claude -p` in a seeded scratch directory instead:
 
 ```bash
-mkdir /tmp/golden && cd /tmp/golden && bash <plugin>/evals/_shared/seed-golden.sh --scan
+mkdir /tmp/golden && cd /tmp/golden && bash /path/to/spring-resilience-atlas/evals/_shared/seed-golden.sh --scan
 claude -p "/resilience-audit:critical-flow-tracer the billing webhook" --plugin-dir <plugin> \
   --allowedTools "Skill Read Glob Grep Agent" --output-format stream-json --verbose < /dev/null
 ```
@@ -68,7 +68,7 @@ are enough for the jar. The first run on 2026-10-22 got 12/12 evidence verified,
 ## Cost
 
 ```bash
-evals/measure-cost.sh <repo-snapshot> "POST /stripe/webhook"
+evals/measure-cost.sh /path/to/snapshot "POST /stripe/webhook"
 ```
 
 The script runs each skill through `claude -p` on a snapshot, plus the same catalog question

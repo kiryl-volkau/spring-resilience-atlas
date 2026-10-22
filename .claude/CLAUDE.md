@@ -3,7 +3,8 @@
 This repository is a Claude Code plugin, `resilience-audit`, that audits large Spring Boot
 applications for reliability failure modes. `README.md` describes the architecture and
 roadmap. The full design rationale is `sources/deep-research-report(10).md` (~2,250 lines):
-grep it for the section you need rather than reading it whole.
+grep it for the section you need rather than reading it whole. `sources/` holds research notes,
+spikes and reviews; it is git-ignored and exists only on the author's machine.
 
 ## Plugin conventions
 
@@ -33,8 +34,7 @@ grep it for the section you need rather than reading it whole.
   `references/`) on first use. Keep the two builds' inputs in step, and keep `Launch.java` a
   single source file that runs on Java 17.
 - Build with `mvn -o -q -f scanner/pom.xml package` for the golden test. The pinned plugin versions resolve from
-  the local cache, because the user's `~/.m2/settings.xml` points at an often unreachable
-  corporate mirror.
+  the local cache, because the configured Maven mirror is often unreachable.
 - `schemas/entrypoint-rules.md` is the contract for every entry-point record. Change the
   rules, the scanner and `fixtures/spring-golden/expected/` together. Then run the golden
   test (`evals/README.md`); it must report 0 differences.

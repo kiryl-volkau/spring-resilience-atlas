@@ -18,10 +18,7 @@ architecture and gives different coverage on every run. This plugin instead:
 
 > **Status: scaffold.** The entry-point atlas, the effect analysis and the HTML report work:
 > scanner, query CLI, the report and four phase-1 skills. The audit skills that turn hints into
-> verdicts are not built yet. The full rationale is in
-> [`sources/deep-research-report(10).md`](sources/deep-research-report(10).md), and the
-> implementation choices are in the
-> [2026-10-22 spike](sources/spikes/2026-10-22-summary.md).
+> verdicts are not built yet.
 
 ## Install
 
@@ -133,7 +130,7 @@ Measured on real repositories:
 
 | Repository | Result |
 |---|---|
-| thingsboard, 5.5k files | 922 / 922 HTTP endpoints match the spike's hand-checked baseline; programmatic Kafka and SQS consumers were found |
+| thingsboard, 5.5k files | 922 / 922 HTTP endpoints match a hand-checked baseline; programmatic Kafka and SQS consumers were found |
 | nacos | 433 / 433 constant-built paths match |
 | Scan time | 0.3–3 s per repository |
 
@@ -202,13 +199,12 @@ scanner/                     atlas builder and query CLI: dependency-free Java, 
 schemas/                     entry-point rules, and entrypoint/domain/flow/finding JSON schemas
 fixtures/spring-golden/      synthetic Spring app with hand-written expected entry points
 evals/                       golden test, claude plugin eval cases, local corpus notes
-sources/                     design research and spikes
 assets/                      icon and screenshot
 ```
 
 ## Decisions
 
-These follow the [2026-10-22 spike](sources/spikes/2026-10-22-summary.md):
+These were settled by a parser and corpus spike on 2026-10-22:
 
 - **Scanner.** Java on the JDK's own javac Tree API, with no dependencies. The plugin ships
   its sources, and `scanner/Launch.java` compiles them on first use, so a directory listing
