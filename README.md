@@ -1,1 +1,210 @@
 # resilience-audit
+
+A Claude Code plugin for auditing large Spring Boot applications for reliability and
+high-availability failure modes: lost acknowledged work, dual writes, unsafe retries,
+non-durable async hand-offs, scheduler races, unbounded dependency calls, unsafe rollouts.
+
+Asking Claude to "find HA problems" across a monolith burns context on rediscovering the
+architecture and gives different coverage on every run. This plugin instead:
+
+1. builds a persistent, machine-readable **atlas** of the application with deterministic
+   scripts — entry points, transactions, side effects, async boundaries, messaging,
+   schedulers, external clients;
+2. maps the atlas onto business domains and ranks critical flows;
+3. runs small, narrow audit skills that query the atlas and open only the code needed to
+   prove or disprove one reliability hypothesis for one flow.
+
+> **Status: scaffold.** The entry-point atlas, the effect analysis and the HTML report work:
+> scanner, query CLI, the report and four phase-1 skills. The audit skills that turn hints into
+> verdicts are not built yet. The full rationale is in
+> [`sources/deep-research-report(10).md`](sources/deep-research-report(10).md), and the
+> implementation choices are in the
+> [2026-10-22 spike](sources/spikes/2026-10-22-summary.md).
+
+## How it works
+
+```text
+Spring repository
+      │
+      ▼
+deterministic scan (scripts, no LLM) ──► .reliability/atlas/
+      │
+      ▼
+domain map ──► critical-flow ranking ──► trace one flow
+      │
+      ▼
+narrow audit skills (durability, messaging, idempotency, ...)
+      │
+      ▼
+evidence-backed findings ──► verifier / deduper ──► backlog + coverage ledger
+```
+
+Two kinds of work are kept apart:
+
+- **Mechanical discovery** — every `@RestController`, `@KafkaListener`, `@SqsListener`,
+  `@Scheduled`, `@Async`, `@Transactional`, `RestTemplate`, `WebClient`, `JpaRepository`,
+  Flyway migration — is found by scripts and stored in the atlas.
+- **Reasoning** — whether a particular combination of those can lose, duplicate or corrupt
+  business work — is done by Claude, one flow and one question at a time.
+
+The unit of analysis is a **business flow**, not a class or a controller:
+
+```text
+external trigger → entry point → transaction → state mutation → durable/async boundary
+  → downstream processing → external effects → observable outcome → recovery mechanism
+```
+
+## The atlas
+
+Written into the audited repository under `.reliability/atlas/`:
+
+| File | Contents | State |
+|---|---|---|
+| `manifest.json` | commit, build tool and modules, Spring Boot and Java versions, file counts, warnings | built |
+| `entrypoints.jsonl` | HTTP (with functional routes and a webhook tag), messaging (annotated and programmatic: Kafka, SQS, Rabbit, JMS, Stream, Pub/Sub, Kinesis, Camel), scheduled (annotated and programmatic), events, startup/shutdown hooks, SOAP, Quartz/Batch jobs, WebSocket, GraphQL, gRPC, Actuator operations, Spring Portlet MVC handlers | built |
+| `types.jsonl` | every type with supertypes, stereotypes and annotations, for interface → implementation lookups | built |
+| `domains.jsonl` | business domains as package prefixes, with confidence; written by `domain-cartographer`, corrected by people | built |
+| `effects.jsonl` | per entry point, the effects on its call path (entry method, its class, up to three injected beans) with file:line: async hand-offs, in-memory state, local files, DB writes, message sends, remote calls, events, transactions, retries, locks, idempotency checks | built |
+| `transactions.jsonl` | `@Transactional` boundaries and their attributes | planned |
+| `persistence.jsonl` | repositories, entity writes, `JdbcTemplate` usage | planned |
+| `message-producers.jsonl` | SQS / Kafka / Rabbit sends | planned |
+| `async-execution.jsonl` | `@Async`, executors, `CompletableFuture`, application events | planned |
+| `external-clients.jsonl` | `RestTemplate`, `WebClient`, Feign and SDK clients with timeout / retry config | planned |
+| `migrations.jsonl` | Flyway / Liquibase changes | planned |
+
+What produces each entry-point record, and how each field is computed, is defined in
+[`schemas/entrypoint-rules.md`](schemas/entrypoint-rules.md). Every record carries:
+
+- the file, line, class, method and triggering annotation;
+- the build module;
+- a discovery status: `STATIC`, `INFERRED` or `UNKNOWN`;
+- `via` tags that say how the record was derived.
+
+Unresolvable values stay visible as `<expression>` instead of being guessed. The manifest
+pins the commit, and every query says whether the atlas is behind `HEAD`.
+
+What the scan cannot see is named rather than silently missing. The manifest warns about:
+
+- entry-like annotations from libraries outside the source set; on one portal codebase this
+  surfaced 190 Spring Portlet handlers;
+- controllers that extend library classes;
+- Kotlin, parse failures and missing generated interfaces;
+- `@Scheduled` without `@EnableScheduling`.
+
+`doc not-in-atlas.md` lists the rest.
+
+Measured on real repositories:
+
+| Repository | Result |
+|---|---|
+| thingsboard, 5.5k files | 922 / 922 HTTP endpoints match the spike's hand-checked baseline; programmatic Kafka and SQS consumers were found |
+| nacos | 433 / 433 constant-built paths match |
+| Scan time | 0.3–3 s per repository |
+
+## The report
+
+`/resilience-audit:report` runs one jar command, `report --scan --open`. It writes
+`.reliability/report.html`, a single self-contained page with no network access:
+
+- a one-sentence headline;
+- **Fix here first**: the places in the code behind the operations with a high or medium code
+  hint, grouped so that one fix covers every operation reaching it;
+- the risk patterns and areas;
+- every operation with its evidence;
+- the blind spots: what a source scan could not see in this application.
+
+A **code hint** (High, Medium, Low, No pattern, Not analysed) comes from rules in
+`scanner/.../report/Risk.java` applied to the effects. Examples are work handed to an in-memory
+thread after the caller was answered, a message sent before the commit, or a job without a lock.
+A hint says where to look first; it is not a verdict.
+
+**Statuses** (Broken, Smells, OK, Not audited) are a separate vocabulary. They come only from
+audit verdicts and findings in `.reliability/audit/`, and the generator computes every colour
+from those records. The skill costs about $0.01 on Haiku.
+
+Inventories and hints were checked by hand against the local corpus (`evals/corpus.md`). Those
+results stay outside this repository, like the corpus itself; the golden fixture pins the rules
+they led to.
+
+## Findings
+
+Every finding is an evidence packet, not an opinion: rule id, domain, flow, a concrete
+failure scenario, file/symbol evidence, existing mitigations, blast radius, recommendation,
+and a verification procedure. **Severity** (how bad if true) and **confidence** (how sure
+it is real) are separate fields. Candidate findings are high-recall; a separate verifier
+tries to disprove each one before it reaches the backlog.
+
+"No findings" is never reported as "safe" — the coverage ledger records which flows and
+which audit profiles actually ran against which commit.
+
+## Roadmap
+
+| Phase                | Skills                                                                                                                                                                                    |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1. Atlas (MVP)       | built: `atlas-bootstrap`, `entrypoint-catalog`, `domain-cartographer`, `critical-flow-tracer` (agent `flow-tracer`), `report`. Next: `critical-flow-discovery`                          |
+| 2. Reliability       | `durable-handoff-audit`, `transaction-dual-write-audit`, `messaging-reliability-audit`, `idempotency-retry-audit`, `async-execution-audit`, `external-dependency-resilience-audit`, `shutdown-deployment-audit` |
+| 3. Observability     | `observability-coverage-map`, `trace-continuity-audit`, `sli-alert-audit`, `logging-diagnostics-audit`, `production-evidence-correlator`, `recovery-reconciliation-audit`                |
+| 4. Verification      | `finding-verifier-deduper`, `failure-injection-test-designer`, `backlog-task-generator`, `coverage-ledger`                                                                               |
+
+Phase 1 is done when these questions are answered from the atlas, without Claude rereading
+the application:
+
+- Show all Billing entry points.
+- Show all queue consumers in Resident.
+- Show scheduled jobs that mutate database state.
+- Show flows that both write to the database and publish a message.
+- Show external clients reachable from Daily Care.
+
+## Layout
+
+```text
+.claude-plugin/plugin.json   plugin manifest
+skills/<skill>/SKILL.md      atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, report
+agents/flow-tracer.md        forked agent behind critical-flow-tracer
+references/atlas-cli.md      the query CLI's commands, filters and output contract
+scanner/                     atlas builder and query CLI: one dependency-free Java jar
+schemas/                     entry-point rules, and entrypoint/domain/flow/finding JSON schemas
+fixtures/spring-golden/      synthetic Spring app with hand-written expected entry points
+evals/                       golden test, claude plugin eval cases, local corpus notes
+sources/                     design research and spikes
+```
+
+## Decisions
+
+These follow the [2026-10-22 spike](sources/spikes/2026-10-22-summary.md):
+
+- **Scanner.** Java on the JDK's own javac Tree API, built as a dependency-free jar invoked
+  as `java -jar`. It needs a JDK 17+ on `PATH`. Unlike JavaParser, javac never lags the
+  target's Java version and needs no Maven download.
+- **Storage.** JSONL that skills never load whole. The CLI prints a summary line, then TSV
+  projections, 50 rows by default.
+- **Models.** Haiku for the mechanical catalog skills, Sonnet for domain mapping, Opus for
+  flow tracing. Fable 5.1 is reserved for the audit reasoning that comes next.
+
+Still open:
+
+- **Atlas location.** Commit `.reliability/` in the audited repository, or keep it local and
+  rebuild it.
+- **Shipping the jar.** `scanner/dist/` is git-ignored during development. A release has to
+  either commit the jar or attach it for download into `${CLAUDE_PLUGIN_DATA}`.
+
+## Development
+
+```bash
+mvn -o -q -f scanner/pom.xml package     # builds scanner/dist/resilience-atlas.jar
+java -cp scanner/dist/resilience-atlas.jar scanner/src/test/java/studio/volkoff/atlas/GoldenTest.java fixtures/spring-golden
+```
+
+The build pins plugin versions that resolve from the local Maven cache (`-o`). Drop `-o` when
+a Maven repository is reachable.
+
+Run Claude Code inside a Spring repository with this plugin loaded from disk:
+
+```bash
+claude --plugin-dir /path/to/spring-resilience-atlas
+```
+
+Skills are invoked as `/resilience-audit:<skill>`, and `/reload-plugins` picks up edits
+without restarting the session. Plugin evals are described in
+[`evals/README.md`](evals/README.md). The local evaluation corpus is listed in
+`evals/corpus.md`, which stays out of git.
