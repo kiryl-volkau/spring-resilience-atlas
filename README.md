@@ -208,3 +208,7 @@ Skills are invoked as `/resilience-audit:<skill>`, and `/reload-plugins` picks u
 without restarting the session. Plugin evals are described in
 [`evals/README.md`](evals/README.md). The local evaluation corpus is listed in
 `evals/corpus.md`, which stays out of git.
+
+## License
+
+Copyright 2026 Kiryl Volkau. Licensed under the [Apache License, Version 2.0](LICENSE).
