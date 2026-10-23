@@ -71,7 +71,8 @@ public final class EffectAnalyzer {
             "DeferredResult", "ListenableFuture", "Future", "WebAsyncTask");
     private static final Set<String> FUTURE_TYPES = Set.of("Future", "CompletableFuture", "ListenableFuture", "CompletionStage",
             "ForkJoinTask", "FutureTask", "ScheduledFuture");
-    private static final Pattern STAND_IN = Pattern.compile("(Noop|NoOp|Fake|Mock|Stub|Dummy|Test|InMemory|Null|Disabled).*|.*(Stub|Mock|Fake)");
+    private static final Pattern SETTER = Pattern.compile("set\\p{IsUppercase}.*");
+    private static final Pattern STAND_IN =Pattern.compile("(Noop|NoOp|Fake|Mock|Stub|Dummy|Test|InMemory|Null|Disabled).*|.*(Stub|Mock|Fake)");
 
     /**
      * @param analysed        false when the entry method is not in the parsed sources (Kotlin, regex fallback, synthetic)
@@ -1033,8 +1034,7 @@ public final class EffectAnalyzer {
         if (m.isConstructor() || SETUP_METHODS.contains(m.name())) {
             return true;
         }
-        String n = m.name();
-        if (n.length() > 3 && n.startsWith("set") && Character.isUpperCase(n.charAt(3)) && m.params().size() == 1) {
+        if (SETTER.matcher(m.name()).matches() && m.params().size() == 1) {
             return true;
         }
         return m.annos().stream().anyMatch(a -> SETUP_ANNOTATIONS.contains(a.simpleName()));

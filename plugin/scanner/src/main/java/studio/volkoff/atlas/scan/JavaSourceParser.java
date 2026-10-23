@@ -196,7 +196,8 @@ public final class JavaSourceParser {
         Map<URI, Workspace.SourceEntry> byUri = new HashMap<>();
         List<JavaFileObject> objects = new ArrayList<>();
         for (Workspace.SourceEntry e : batch) {
-            JavaFileObject o = new InMemorySource(e.path().toUri(), readSource(e));
+            URI location = e.path().toUri();
+            JavaFileObject o = new InMemorySource(location, readSource(e));
             byUri.put(o.toUri(), e);
             objects.add(o);
         }
@@ -209,9 +210,11 @@ public final class JavaSourceParser {
         Set<URI> broken = new HashSet<>();
         List<String> samples = new ArrayList<>();
         for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
-            if (d.getKind() == Diagnostic.Kind.ERROR && d.getSource() != null) {
-                if (broken.add(d.getSource().toUri()) && samples.size() < 5) {
-                    Workspace.SourceEntry e = byUri.get(d.getSource().toUri());
+            JavaFileObject file = d.getSource();
+            if (d.getKind() == Diagnostic.Kind.ERROR && file != null) {
+                URI uri = file.toUri();
+                if (broken.add(uri) && samples.size() < 5) {
+                    Workspace.SourceEntry e = byUri.get(uri);
                     samples.add((e == null ? "?" : e.relPath()) + ":" + d.getLineNumber() + ": "
                             + d.getMessage(java.util.Locale.ROOT).lines().findFirst().orElse(""));
                 }
@@ -222,7 +225,8 @@ public final class JavaSourceParser {
         List<SourceFile> parsed = new ArrayList<>();
         List<Workspace.SourceEntry> failed = new ArrayList<>();
         for (CompilationUnitTree cu : units) {
-            Workspace.SourceEntry entry = byUri.get(cu.getSourceFile().toUri());
+            JavaFileObject file = cu.getSourceFile();
+            Workspace.SourceEntry entry = byUri.get(file.toUri());
             if (entry == null) {
                 continue;
             }
