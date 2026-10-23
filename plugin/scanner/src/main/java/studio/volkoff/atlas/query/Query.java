@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -195,6 +196,7 @@ public final class Query {
         }
         if (m.get("files") instanceof Map<?, ?> f) {
             out.append("# files: java=").append(f.get("java")).append(" kotlin=").append(f.get("kotlin"))
+                    .append(" groovy=").append(Objects.requireNonNullElse(f.get("groovy"), 0))
                     .append(" generated=").append(f.get("generated")).append(" parse-failures=").append(f.get("parseFailures")).append('\n');
         }
         Map<String, Map<String, Integer>> byKind = new TreeMap<>();

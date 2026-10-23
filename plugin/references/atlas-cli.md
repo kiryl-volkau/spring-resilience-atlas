@@ -54,7 +54,7 @@ Read the count line before paging. When a query matches hundreds of rows, narrow
 | `--kind HTTP,MESSAGING,SCHEDULED,EVENT,LIFECYCLE,SOAP,JOB,WEBSOCKET,GRAPHQL,GRPC,ACTUATOR,ROUTER,PORTLET` | exact, comma for any-of |
 | `--tag webhook,oauth-callback,webhook-management,unauthenticated-write` | the webhook verdict in `attrs.webhook` of HTTP records |
 | `--subkind SQS,KAFKA` | substring, comma for any-of (`GET`, `CRON`, `TRANSACTIONAL_EVENT_LISTENER`, …) |
-| `--status STATIC,INFERRED,UNKNOWN`, `--origin SOURCE,GENERATED,KOTLIN,FALLBACK` | exact |
+| `--status STATIC,INFERRED,UNKNOWN`, `--origin SOURCE,GENERATED,KOTLIN,GROOVY,FALLBACK` | exact |
 | `--module PREFIX`, `--package PREFIX` | prefix of the module path / class name |
 | `--class TEXT`, `--target TEXT`, `--file TEXT`, `--via TEXT` | substring |
 | `--path-prefix /api/billing` | prefix of the target |
@@ -73,7 +73,7 @@ The full definition is printed by `doc entrypoint-rules.md`. The fields that mat
 reasoning:
 
 - **`status`.** `STATIC` was read directly from source. `INFERRED` was derived through
-  inheritance, a programmatic pattern, Kotlin or the regex fallback. `UNKNOWN` holds a value
+  inheritance, a programmatic pattern, Kotlin, Groovy or the regex fallback. `UNKNOWN` holds a value
   that could not be evaluated, shown as `<expr>` inside the target.
 - **`via`.** How the record was derived, such as `inherited:OrderApi`, `meta:@JsonGet`,
   `programmatic:receiveMessage` or `missing-interface:OwnersApi`.
@@ -117,4 +117,4 @@ What the atlas cannot see is listed by `doc not-in-atlas.md`.
   - Mitigations: `retry`, `lock` (including row locks) and `idempotency-check`.
   - `self-invocation`: a proxy annotation bypassed by a call through `this`, or put on an init
     callback.
-- **Not analysed.** Kotlin and regex-fallback records have `analysed: false` and no effects.
+- **Not analysed.** Kotlin, Groovy and regex-fallback records have `analysed: false` and no effects.

@@ -13,8 +13,9 @@ that the atlas does not cover it and how to check instead.
 | Plain servlets (`@WebServlet`, `ServletRegistrationBean`), legacy `Controller` interface implementations, `HttpRequestHandler` | grep for those types |
 | JMX `@ManagedOperation`, Spring Shell `@ShellMethod`, JobRunr / db-scheduler jobs, file watchers, database triggers | grep for the annotation or API |
 | Kotlin precision. `.kt` files are scanned by regex: no composed annotations, no inherited mappings, constants only as string `const val`. The Kotlin `router { }` DSL is not read | open the Kotlin file |
+| Groovy precision. `.groovy` files are scanned by regex: no composed annotations, no inherited mappings, constants only as single-line `static final` strings. Triple-quoted annotation values come out `UNKNOWN` | open the Groovy file |
 | Whether a recorded entry point is active: `@Profile`, `@ConditionalOn*` (kept in `attrs.conditions`), `${…}` placeholders (kept verbatim), `cron = "-"` (`attrs.disabled`) | read the configuration for the profile in question |
 | Effective URLs: targets are as declared. Servlet and context paths are in `manifest.build.basePaths` | prepend the base path |
 | Spring Cloud Gateway routes (YAML `spring.cloud.gateway.routes` or `RouteLocator` beans). A warning names the dependency | read the gateway configuration |
-| Effects of operations whose code is not parsed: Kotlin and regex-fallback records have `analysed: false` in `effects.jsonl` and no signals | open the code |
+| Effects of operations whose code is not parsed: Kotlin, Groovy and regex-fallback records have `analysed: false` in `effects.jsonl` and no signals | open the code |
 | Effects deeper than three bean hops, or on objects whose type is not declared in the sources (lambda parameters, Lombok-generated fields, library return values) | follow the path with the `critical-flow-tracer` skill |

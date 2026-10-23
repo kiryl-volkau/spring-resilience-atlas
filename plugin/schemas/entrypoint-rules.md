@@ -7,7 +7,7 @@ disagree, either the scanner or this file is wrong.
 
 ## Scanned sources
 
-Main sources only. The scanner reads `.java` and `.kt` files and skips:
+Main sources only. The scanner reads `.java`, `.kt` and `.groovy` files and skips:
 
 - source sets other than main: `src/<set>` when the lower-case set name contains `test`, equals
   `it` or `jmh`, or starts with `integration` or `e2e`;
@@ -36,7 +36,7 @@ or `build.gradle.kts`, relative to the repository root, with `.` for the root.
 | `file`, `line` | repository-relative path with `/`, and the 1-based line where the most-derived declaration of the method (or the class, for class-level records) starts |
 | `anno` | the triggering annotation as written in the source, such as `@GetMapping` or `@JsonGet`; the signal name for programmatic and supertype-based records |
 | `status` | `STATIC`, `INFERRED` or `UNKNOWN`, see [Status](#status) |
-| `origin` | the origin of the file that `file` points to: `SOURCE`; `GENERATED` for generated-source directories; `KOTLIN` for `.kt` files; `FALLBACK` for a `.java` file that failed to parse and was scanned by the regex path |
+| `origin` | the origin of the file that `file` points to: `SOURCE`; `GENERATED` for generated-source directories; `KOTLIN` for `.kt` files; `GROOVY` for `.groovy` files; `FALLBACK` for a `.java` file that failed to parse and was scanned by the regex path |
 | `via` | how the record was derived, a list of the tags in [Via tags](#via-tags); empty for a plain annotation on the class itself |
 | `placeholder` | `true` when the target contains `${` or `#{` |
 | `attrs` | extra attributes, per kind |
@@ -436,7 +436,7 @@ a library, is kept there as text and does not change the status.
     is a stream function, integration adapter, Camel route, functional route, job, bean
     runner or router;
   - it uses a convention alias or was resolved through a wildcard import;
-  - it came from the regex path (`KOTLIN`, `FALLBACK`).
+  - it came from the regex path (`KOTLIN`, `GROOVY`, `FALLBACK`).
 - **`UNKNOWN`.** At least one value could not be evaluated.
 
 The worst status wins. Placeholders (`${…}`) and SpEL (`#{…}`) are kept verbatim and do not
@@ -468,8 +468,8 @@ lower the status.
 `manifest.json` names everything the atlas may be missing. `stats` and `atlas-bootstrap` print
 these warnings:
 
-- Java files that failed to parse and were scanned by regex, and Kotlin files, which are only
-  ever scanned by regex.
+- Java files that failed to parse and were scanned by regex, and Kotlin and Groovy files, which
+  are only ever scanned by regex.
 - HTTP records pointing at missing (generated) interfaces.
 - Messaging libraries in the build with no consumer found.
 - XML-declared JAX-WS endpoints and `SimpleUrlHandlerMapping` beans.

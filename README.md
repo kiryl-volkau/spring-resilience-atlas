@@ -121,7 +121,7 @@ What the scan cannot see is named rather than silently missing. The manifest war
 - entry-like annotations from libraries outside the source set; on one portal codebase this
   surfaced 190 Spring Portlet handlers;
 - controllers that extend library classes;
-- Kotlin, parse failures and missing generated interfaces;
+- Kotlin, Groovy, parse failures and missing generated interfaces;
 - `@Scheduled` without `@EnableScheduling`.
 
 `doc not-in-atlas.md` lists the rest.

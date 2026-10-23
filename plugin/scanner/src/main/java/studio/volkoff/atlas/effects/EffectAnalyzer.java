@@ -75,7 +75,7 @@ public final class EffectAnalyzer {
     private static final Pattern STAND_IN =Pattern.compile("(Noop|NoOp|Fake|Mock|Stub|Dummy|Test|InMemory|Null|Disabled).*|.*(Stub|Mock|Fake)");
 
     /**
-     * @param analysed        false when the entry method is not in the parsed sources (Kotlin, regex fallback, synthetic)
+     * @param analysed        false when the entry method is not in the parsed sources (Kotlin, Groovy, regex fallback, synthetic)
      * @param methods         method bodies read
      * @param files           files those bodies are in, entry file first
      * @param truncated       the walk stopped at the method budget or skipped implementations or overloads

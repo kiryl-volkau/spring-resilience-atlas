@@ -385,7 +385,7 @@ footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px soli
         <span class="lv MEDIUM"><i><b></b><b></b><b></b></i>Medium</span><div>A pattern that duplicates or stalls work under retries, restarts or several replicas: no idempotency check, a job without a lock, a remote call inside a transaction, state in memory.</div>
         <span class="lv LOW"><i><b></b><b></b><b></b></i>Low</span><div>Worth a look, rarely a defect on its own: a cache in memory, a background thread, an in-process event inside a transaction.</div>
         <span class="lv NONE"><i><b></b><b></b><b></b></i>No pattern</span><div>Nothing matched on the path the scanner read. This is not a clean bill of health.</div>
-        <span class="lv NA"><i><b></b><b></b><b></b></i>Not analysed</span><div>The code behind the operation was never read: Kotlin and files the Java parser could not handle are scanned for entry points only. Nothing is known about their risk.</div>
+        <span class="lv NA"><i><b></b><b></b><b></b></i>Not analysed</span><div>The code behind the operation was never read: Kotlin, Groovy and files the Java parser could not handle are scanned for entry points only. Nothing is known about their risk.</div>
       </div>
       <p>The scanner reads the entry method, the methods of its class that it calls, and the methods of injected beans a few levels deep. A hint says <strong>where to look first</strong>; it is not a verdict. A mitigation that lives outside the code (a unique constraint, a dead-letter queue, a single replica) is invisible here.</p>
       <h3>Status: from an audit, with evidence</h3>
@@ -401,7 +401,7 @@ footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px soli
       <h3>Discovery status</h3>
       <div class="legend">
         <span class="tag dim">static</span><div>Found from annotations and declarations whose values the scanner resolved exactly.</div>
-        <span class="tag dim">inferred</span><div>Found through a rule that can be wrong: an inherited mapping, a naming convention, regex-only parsing (Kotlin, files javac could not parse).</div>
+        <span class="tag dim">inferred</span><div>Found through a rule that can be wrong: an inherited mapping, a naming convention, regex-only parsing (Kotlin, Groovy, files javac could not parse).</div>
         <span class="tag dim">unknown</span><div>Something is there but its target is not known from the sources, such as a generated interface that has not been built.</div>
       </div>
     </div>
@@ -442,6 +442,7 @@ var SIGNAL_ORDER = ["async-handoff", "in-memory-state", "local-file", "self-invo
 var WARNING_INFO = {
   "parse-failures": {title: "Files the Java parser could not read", text: "These files were scanned with patterns instead of the compiler's parser. Their entry points are marked inferred and their call paths were not analysed."},
   "kotlin": {title: "Kotlin is scanned by pattern matching", text: "Entry points in Kotlin files are found by patterns. Composed annotations and inherited mappings are not resolved, and call paths are not analysed."},
+  "groovy": {title: "Groovy is scanned by pattern matching", text: "Entry points in Groovy files are found by patterns. Composed annotations and inherited mappings are not resolved, and call paths are not analysed."},
   "missing-interfaces": {title: "Generated API interfaces are missing", text: "Controllers implement interfaces that are generated at build time. Build the project and rescan to see those endpoints exactly."},
   "messaging-without-consumers": {title: "Messaging library without visible consumers", text: "A messaging library is declared but no consumer was found. Consumers may be wired in configuration or in code the scanner does not recognise."},
   "xml": {title: "Endpoints declared in XML", text: "XML configuration declares endpoints that are not in this report."},
@@ -454,7 +455,7 @@ var WARNING_INFO = {
   "path-prefix": {title: "A path prefix is added in configuration", text: "A WebMvcConfigurer adds a prefix to controller paths. The paths listed here are as declared on the controllers, without that prefix."},
   "web-xml": {title: "Servlets, filters and listeners in web.xml", text: "web.xml declares servlets, filters or listeners that are not in this report, and controller paths are relative to its servlet mappings."},
   "programmatic-registration": {title: "Servlets and endpoints registered in code", text: "Servlets, filters, session listeners or JAX-WS endpoints are registered programmatically and are not listed as operations."},
-  "no-sources": {title: "No sources found", text: "The scanner found no Java or Kotlin main sources."},
+  "no-sources": {title: "No sources found", text: "The scanner found no Java, Kotlin or Groovy main sources."},
   "other": {title: "Scanner note", text: ""}
 };
 var SUBKIND_LABEL = {
@@ -578,7 +579,7 @@ if (b.springBootVersion) stack.push("Spring Boot " + b.springBootVersion);
 if (b.javaVersion) stack.push("Java " + b.javaVersion);
 if (b.tool) stack.push(b.tool + (b.modules > 1 ? ", " + b.modules + " modules" : ""));
 if (stack.length) metaParts.push("<span>" + esc(stack.join(" · ")) + "</span>");
-metaParts.push("<span>" + fmt(f.java) + " Java" + (f.kotlin ? " · " + fmt(f.kotlin) + " Kotlin" : "") + " files</span>");
+metaParts.push("<span>" + fmt(f.java) + " Java" + (f.kotlin ? " · " + fmt(f.kotlin) + " Kotlin" : "") + (f.groovy ? " · " + fmt(f.groovy) + " Groovy" : "") + " files</span>");
 el("meta").innerHTML = metaParts.join("");
 el("footer").innerHTML = "Generated by " + esc(D.generator) + " on " + esc(dateTime(D.generatedAt)) + " from <code>.reliability/</code>. Every number on this page comes from the atlas and audit files; nothing is sent anywhere.";
 
@@ -613,7 +614,7 @@ var SPOTS = [];
   var info = WARNING_INFO[w.code] || WARNING_INFO.other;
   SPOTS.push({specific: true, title: info.title, text: info.text || w.text, raw: w.text});
 });
-if (notAnalysed) SPOTS.push({specific: true, title: "Operations without call-path analysis", text: plural(notAnalysed, "operation") + " (Kotlin, regex fallback or synthetic entry points) show no hint because their code was not parsed. \"Not analysed\" says nothing about their risk."});
+if (notAnalysed) SPOTS.push({specific: true, title: "Operations without call-path analysis", text: plural(notAnalysed, "operation") + " (Kotlin, Groovy, regex fallback or synthetic entry points) show no hint because their code was not parsed. \"Not analysed\" says nothing about their risk."});
 if (arr(D.auditProblems).length) SPOTS.push({specific: true, title: "Audit records that could not be read", text: plural(D.auditProblems.length, "row") + " in the audit files are not valid JSON and were skipped, so their verdicts or findings are missing here.", raw: D.auditProblems.slice(0, 5).join("; ")});
 if (a.effectsPresent === false && total) SPOTS.push({specific: true, title: "Atlas built by an older scanner", text: "The atlas has no effects file, so no operation has hints. Rescan to compute them."});
 var specificSpots = SPOTS.length;
@@ -624,7 +625,7 @@ SPOTS.push({title: "How deep the scan reads", text: "The entry method, the metho
   var icon = '<div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 8v5M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>';
   var head, fine;
   if (!total) {
-    head = "<strong>No operations found</strong> in " + plural((f.java || 0) + (f.kotlin || 0), "source file") + ".";
+    head = "<strong>No operations found</strong> in " + plural((f.java || 0) + (f.kotlin || 0) + (f.groovy || 0), "source file") + ".";
     fine = "The scanner recognised no HTTP mapping, consumer, scheduled job, listener or startup hook. That is expected for a library, a gateway whose routes live in configuration, or a tool started from main(). Nothing on this page means the application is safe; check the blind spots below.";
     ["kpis", "attention", "patterns", "operations"].forEach(function (id) { el(id).classList.add("hidden"); });
     Array.prototype.forEach.call(document.querySelectorAll(".toc a[data-needs-ops]"), function (x) { x.classList.add("hidden"); });
@@ -635,7 +636,7 @@ SPOTS.push({title: "How deep the scan reads", text: "The entry method, the metho
       " Operations without a verdict keep their code hint, which is not a verdict.";
   } else if (!analysedOps) {
     head = "<strong>No call path was read</strong>, so this page cannot rank the " + plural(total, "operation") + " it found by risk.";
-    fine = "Their code is Kotlin or could not be parsed: entry points are found by patterns only. Each operation is listed as \"Not analysed\", which says nothing about its risk.";
+    fine = "Their code is Kotlin or Groovy, or could not be parsed: entry points are found by patterns only. Each operation is listed as \"Not analysed\", which says nothing about its risk.";
   } else {
     if (byLevel.HIGH) head = "<strong>" + plural(byLevel.HIGH, "operation") + "</strong> can lose or corrupt work when " + (byLevel.HIGH === 1 ? "its" : "their") + " pattern fires";
     else head = "No operation shows a pattern that loses work outright";
@@ -669,7 +670,7 @@ SPOTS.push({title: "How deep the scan reads", text: "The entry method, the metho
   } else {
     tiles.push(hints);
     tiles.push('<div class="kpi"><span class="label">Call paths read</span><span class="value">' + fmt(analysedOps) + "<small> of " + fmt(total) + '</small></span><span class="sub">' +
-      (analysedOps ? fmt(methodsRead) + " method bodies read" : "Kotlin or unparsed code: entry points only") + "</span></div>");
+      (analysedOps ? fmt(methodsRead) + " method bodies read" : "Kotlin, Groovy or unparsed code: entry points only") + "</span></div>");
   }
   tiles.push('<div class="kpi"><span class="label">Blind spots</span><span class="value">' + fmt(specificSpots) + '</span><span class="sub">' +
     (specificSpots ? "specific to this app" : "no warning for this app") + " · 2 standing limits · <a href=\"#blind-spots\">review</a></span></div>");
@@ -922,7 +923,7 @@ function factsHtml(o) {
 }
 function reachHtml(o) {
   var r = o.reach;
-  if (!r.analysed) return '<p class="note">Call path not analysed. Kotlin files, files javac could not parse and synthetic entry points are scanned by patterns only, so nothing is known about what they call.</p>';
+  if (!r.analysed) return '<p class="note">Call path not analysed. Kotlin and Groovy files, files javac could not parse and synthetic entry points are scanned by patterns only, so nothing is known about what they call.</p>';
   var s = "Read " + plural(r.methods, "method") + " in " + plural(r.files, "file") + ".";
   if (r.beyond) s += " " + plural(r.beyond, "call") + " went deeper than the scan reads and " + (r.beyond === 1 ? "was" : "were") + " not followed.";
   if (r.budgetHit) s += " The walk stopped at its method budget.";

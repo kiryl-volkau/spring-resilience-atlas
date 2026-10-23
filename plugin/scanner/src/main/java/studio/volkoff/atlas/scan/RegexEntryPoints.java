@@ -14,7 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The regex path for Kotlin sources and Java files javac could not parse. It recognises framework
+ * The regex path for Kotlin and Groovy sources and Java files javac could not parse. It recognises framework
  * annotations by name with literal attribute values only; every record is {@code INFERRED} at best.
  */
 public final class RegexEntryPoints {
@@ -29,7 +29,7 @@ public final class RegexEntryPoints {
     private static final Pattern CLASS_DECL = Pattern.compile("\\b(?:class|interface|object)\\s+([A-Za-z_]\\w*)");
     private static final Pattern KOTLIN_FUN = Pattern.compile("\\bfun\\s+(?:<[^>]*>\\s*)?(?:[\\w.]+\\.)?([A-Za-z_]\\w*)\\s*\\(");
     private static final Pattern JAVA_METHOD = Pattern.compile("([A-Za-z_]\\w*)\\s*\\(");
-    private static final Pattern STRING = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
+    private static final Pattern STRING = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"|'((?:[^'\\\\]|\\\\.)*)'");
     private static final Pattern KOTLIN_PARAM = Pattern.compile("\\(\\s*(?:@\\w+\\s+)*\\w+\\s*:\\s*([\\w.]+)");
     private static final Pattern JAVA_PARAM = Pattern.compile("\\(\\s*(?:@\\w+\\s+)*(?:final\\s+)?([\\w.]+)(?:<[^>]*>)?\\s+\\w+");
     private static final Map<String, String> SHORTCUTS = Map.of("GetMapping", "GET", "PostMapping", "POST",
@@ -37,7 +37,8 @@ public final class RegexEntryPoints {
     private static final Set<String> KEYWORDS = Set.of("if", "for", "while", "switch", "catch", "return", "new", "synchronized");
     private static final Pattern CONSTANT = Pattern.compile(
             "const\\s+val\\s+(\\w+)\\s*(?::\\s*String)?\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\""
-                    + "|(?:static\\s+final|final\\s+static)\\s+String\\s+(\\w+)\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"\\s*;");
+                    + "|(?:static\\s+final|final\\s+static)\\s+(?:String\\s+)?(\\w+)\\s*=\\s*"
+                    + "(?:\"((?:[^\"\\\\]|\\\\.)*)\"|'((?:[^'\\\\]|\\\\.)*)')[ \\t]*(?:;|\\r?\\n|\\z)");
     private static final Pattern KOTLIN_TEMPLATE = Pattern.compile("(?<!\\\\)\\$\\{([\\w.]+)\\}|(?<!\\\\)\\$([A-Za-z_]\\w*)");
 
     private final Map<String, String> constants = new java.util.HashMap<>();
@@ -213,8 +214,8 @@ public final class RegexEntryPoints {
     }
 
     /**
-     * Collects string constants ({@code const val} in Kotlin, {@code static final String} in Java)
-     * from every regex-path file, keyed by {@code Owner.NAME}, and by bare {@code NAME} when unique.
+     * Collects string constants ({@code const val} in Kotlin, {@code static final String} in Java,
+     * single-line {@code static final} strings in Groovy) from every regex-path file, keyed by {@code Owner.NAME}, and by bare {@code NAME} when unique.
      */
     public void collectConstants(String source) {
         String text = stripComments(source);
@@ -234,7 +235,7 @@ public final class RegexEntryPoints {
                 }
             }
             String name = m.group(1) != null ? m.group(1) : m.group(3);
-            String value = m.group(1) != null ? m.group(2) : m.group(4);
+            String value = (m.group(1) != null ? m.group(2) : m.group(4) != null ? m.group(4) : m.group(5)).replace("\\$", "$");
             if (owner != null) {
                 constants.put(owner + "." + name, value);
             }
@@ -271,7 +272,7 @@ public final class RegexEntryPoints {
                 String p = part.trim();
                 Matcher lit = STRING.matcher(p);
                 if (lit.matches()) {
-                    String s = lit.group(1);
+                    String s = lit.group(1) != null ? lit.group(1) : lit.group(2);
                     if (kotlin) {
                         Matcher t = KOTLIN_TEMPLATE.matcher(s);
                         StringBuilder sb = new StringBuilder();
@@ -284,9 +285,10 @@ public final class RegexEntryPoints {
                             t.appendReplacement(sb, Matcher.quoteReplacement(resolved != null ? resolved : "<" + name + ">"));
                         }
                         t.appendTail(sb);
-                        s = sb.toString().replace("\\$", "$");
+                        s = sb.toString();
                     }
-                    value.append(s);
+                    // Kotlin and Groovy escape a Spring placeholder's dollar; Java has no such escape.
+                    value.append(s.replace("\\$", "$"));
                 } else {
                     String resolved = constant(p);
                     if (resolved == null) {
@@ -452,16 +454,32 @@ public final class RegexEntryPoints {
         return text.length();
     }
 
-    /** Skips a char literal such as {@code '"'} or {@code '\''}; returns the index after it. */
+    /**
+     * Skips a char literal such as {@code '"'} or {@code '\''}, or a Groovy single-quoted string
+     * such as {@code '/api'} or {@code '''text'''}; returns the index after it.
+     */
     private static int skipChar(String text, int quote) {
+        if (text.startsWith("'''", quote)) {
+            int end = text.indexOf("'''", quote + 3);
+            return end < 0 ? text.length() : end + 3;
+        }
         if (quote + 1 < text.length() && text.charAt(quote + 1) == '\\') {
-            int end = text.indexOf('\'', quote + 2);
+            int end = text.indexOf('\'', quote + 3);
             return end < 0 ? quote + 1 : end + 1;
         }
         if (quote + 2 < text.length() && text.charAt(quote + 2) == '\'') {
             return quote + 3;
         }
-        return quote + 1;
+        // Only Groovy gets here: a Java or Kotlin char literal is one character or an escape.
+        for (int i = quote + 1; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\\') {
+                i++;
+            } else if (c == '\'' || c == '\n') {
+                return i + 1;
+            }
+        }
+        return text.length();
     }
 
     private static int skipSpaces(String text, int i) {

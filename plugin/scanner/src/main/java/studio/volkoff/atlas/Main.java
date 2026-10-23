@@ -117,7 +117,7 @@ public final class Main {
         out.append("# static attention: high ").append(l.get("HIGH")).append(", medium ").append(l.get("MEDIUM"))
                 .append(", low ").append(l.get("LOW")).append(", none ").append(l.get("NONE"))
                 .append(", not analysed ").append(l.get(ReportBuilder.NOT_ANALYSED))
-                .append(" (Kotlin, regex fallback or synthetic: no signals, so no level)").append('\n');
+                .append(" (Kotlin, Groovy, regex fallback or synthetic: no signals, so no level)").append('\n');
         Map<String, Integer> c = s.byColour();
         if (c.get("GREY") == s.operations()) {
             out.append("# audit: not run; every operation is \"not audited\" (attention levels are static hints, not verdicts)\n");
@@ -169,6 +169,7 @@ public final class Main {
                 .append(" in ").append(m.get("durationMs")).append(" ms\n");
         if (m.get("files") instanceof Map<?, ?> f) {
             out.append("# files: java=").append(f.get("java")).append(" kotlin=").append(f.get("kotlin"))
+                    .append(" groovy=").append(f.get("groovy"))
                     .append(" generated=").append(f.get("generated")).append(" parse-failures=").append(f.get("parseFailures")).append('\n');
         }
         out.append("kind\tcount\n");

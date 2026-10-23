@@ -18,7 +18,7 @@
     "line": {"type": "integer", "minimum": 0},
     "anno": {"type": "string"},
     "status": {"enum": ["STATIC", "INFERRED", "UNKNOWN", "RUNTIME_CONFIRMED"]},
-    "origin": {"enum": ["SOURCE", "GENERATED", "KOTLIN", "FALLBACK"]},
+    "origin": {"enum": ["SOURCE", "GENERATED", "KOTLIN", "GROOVY", "FALLBACK"]},
     "via": {"type": "array", "items": {"type": "string"}},
     "placeholder": {"type": "boolean"},
     "attrs": {"type": "object"}

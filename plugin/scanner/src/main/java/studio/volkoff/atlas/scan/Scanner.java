@@ -51,10 +51,12 @@ public final class Scanner {
         long started = System.nanoTime();
         Workspace ws = Workspace.load(repo);
         List<Workspace.SourceEntry> java = new ArrayList<>();
-        List<Workspace.SourceEntry> kotlin = new ArrayList<>();
+        List<Workspace.SourceEntry> regexOnly = new ArrayList<>();
         for (Workspace.SourceEntry e : ws.sources) {
-            (e.origin() == Origin.KOTLIN ? kotlin : java).add(e);
+            (e.origin() == Origin.KOTLIN || e.origin() == Origin.GROOVY ? regexOnly : java).add(e);
         }
+        int kotlinFiles = (int) regexOnly.stream().filter(e -> e.origin() == Origin.KOTLIN).count();
+        int groovyFiles = regexOnly.size() - kotlinFiles;
 
         JavaSourceParser.Result parsed = new JavaSourceParser().parse(java, ws.javaVersion);
         Index index = new Index(parsed.parsed());
@@ -62,14 +64,14 @@ public final class Scanner {
         List<EntryPoint> entryPoints = new ArrayList<>(extractor.extract());
         AnnotationCensus census = new AnnotationCensus(index);
         RegexEntryPoints regex = new RegexEntryPoints();
-        for (Workspace.SourceEntry e : kotlin) {
+        for (Workspace.SourceEntry e : regexOnly) {
             regex.collectConstants(JavaSourceParser.readSource(e));
         }
         for (Workspace.SourceEntry e : parsed.failed()) {
             regex.collectConstants(JavaSourceParser.readSource(e));
         }
-        for (Workspace.SourceEntry e : kotlin) {
-            entryPoints.addAll(regex.scan(e, JavaSourceParser.readSource(e), Origin.KOTLIN));
+        for (Workspace.SourceEntry e : regexOnly) {
+            entryPoints.addAll(regex.scan(e, JavaSourceParser.readSource(e), e.origin()));
         }
         for (Workspace.SourceEntry e : parsed.failed()) {
             entryPoints.addAll(regex.scan(e, JavaSourceParser.readSource(e), Origin.FALLBACK));
@@ -94,7 +96,7 @@ public final class Scanner {
         writeJsonl(out.resolve("effects.jsonl"), effectRows);
 
         Git git = new Git(ws.root);
-        Map<String, Object> manifest = manifest(ws, parsed, kotlin.size(), entryPoints, census,
+        Map<String, Object> manifest = manifest(ws, parsed, kotlinFiles, groovyFiles, entryPoints, census,
                 extractor.scheduledRecords(), CodeFacts.of(index), git, (System.nanoTime() - started) / 1_000_000);
         manifest.put("signals", new TreeMap<>(EffectAnalyzer.census(effects)));
         manifest.put("effectsAnalysed", effects.stream().filter(EffectAnalyzer.Result::analysed).count());
@@ -157,7 +159,7 @@ public final class Scanner {
     }
 
     private static Map<String, Object> manifest(Workspace ws, JavaSourceParser.Result parsed, int kotlinFiles,
-                                                List<EntryPoint> eps, AnnotationCensus census, int scheduledRecords,
+                                                int groovyFiles, List<EntryPoint> eps, AnnotationCensus census, int scheduledRecords,
                                                 CodeFacts facts, Git git, long millis) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("schemaVersion", 1);
@@ -179,8 +181,9 @@ public final class Scanner {
         m.put("build", build);
         long generated = ws.sources.stream().filter(s -> s.origin() == Origin.GENERATED).count();
         Map<String, Object> files = new LinkedHashMap<>();
-        files.put("java", ws.sources.size() - kotlinFiles);
+        files.put("java", ws.sources.size() - kotlinFiles - groovyFiles);
         files.put("kotlin", kotlinFiles);
+        files.put("groovy", groovyFiles);
         files.put("generated", generated);
         files.put("parseFailures", parsed.failed().size());
         m.put("files", files);
@@ -192,7 +195,7 @@ public final class Scanner {
         }
         m.put("entrypoints", counts);
         m.put("statuses", statuses);
-        m.put("warnings", warnings(ws, parsed, kotlinFiles, eps, census, scheduledRecords, facts));
+        m.put("warnings", warnings(ws, parsed, kotlinFiles, groovyFiles, eps, census, scheduledRecords, facts));
         List<Map<String, Object>> unresolved = new ArrayList<>();
         for (AnnotationCensus.Unresolved u : census.unresolved()) {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -206,8 +209,8 @@ public final class Scanner {
         return m;
     }
 
-    private static List<String> warnings(Workspace ws, JavaSourceParser.Result parsed, int kotlinFiles, List<EntryPoint> eps,
-                                         AnnotationCensus census, int scheduledRecords, CodeFacts facts) {
+    private static List<String> warnings(Workspace ws, JavaSourceParser.Result parsed, int kotlinFiles, int groovyFiles,
+                                         List<EntryPoint> eps, AnnotationCensus census, int scheduledRecords, CodeFacts facts) {
         List<String> w = new ArrayList<>();
         if (!parsed.failed().isEmpty()) {
             w.add(parsed.failed().size() + " Java files failed to parse with javac " + Runtime.version().feature()
@@ -216,6 +219,10 @@ public final class Scanner {
         if (kotlinFiles > 0) {
             w.add(kotlinFiles + " Kotlin files were scanned by regex only (origin KOTLIN): composed annotations and inherited mappings "
                     + "are not resolved there, constants only when they are string const vals");
+        }
+        if (groovyFiles > 0) {
+            w.add(groovyFiles + " Groovy files were scanned by regex only (origin GROOVY): composed annotations and inherited mappings "
+                    + "are not resolved there, constants only when they are single-line static final strings");
         }
         long missing = eps.stream().filter(e -> e.via.stream().anyMatch(v -> v.startsWith("missing-interface:"))).count();
         if (missing > 0) {
@@ -280,7 +287,7 @@ public final class Scanner {
             w.add("Spring Cloud Gateway is declared: its routes come from YAML or RouteLocator beans and are not in the atlas");
         }
         if (ws.sources.isEmpty()) {
-            w.add("no Java or Kotlin main sources found");
+            w.add("no Java, Kotlin or Groovy main sources found");
         }
         return w;
     }

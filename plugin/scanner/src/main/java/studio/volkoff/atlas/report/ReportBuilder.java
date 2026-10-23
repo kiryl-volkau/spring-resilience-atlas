@@ -403,6 +403,9 @@ public final class ReportBuilder {
         if (text.contains("Kotlin files")) {
             return "kotlin";
         }
+        if (text.contains("Groovy files")) {
+            return "groovy";
+        }
         if (text.contains("missing from the sources")) {
             return "missing-interfaces";
         }
@@ -439,7 +442,7 @@ public final class ReportBuilder {
         if (text.contains("Spring Cloud Gateway")) {
             return "gateway";
         }
-        if (text.contains("no Java or Kotlin")) {
+        if (text.contains("main sources found")) {
             return "no-sources";
         }
         return "other";

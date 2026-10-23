@@ -185,3 +185,5 @@ HTTP	POST	/api/patterns/pumped	PatternsController.pumped	STATIC
 HTTP	POST	/api/patterns/tx-template	PatternsController.txTemplate	STATIC
 HTTP	POST	/api/patterns/wrapped	PatternsController.wrapped	STATIC
 HTTP	POST	/api/dailycare/notes/{noteId}/attachments	CareNoteController.attach	INFERRED
+HTTP	GET	/api/dailycare/activities/{residentId}	ActivityLogController.listActivities	INFERRED
+MESSAGING	KAFKA	care.dailycare.activities	ActivityEventListener.onActivityRecorded	INFERRED

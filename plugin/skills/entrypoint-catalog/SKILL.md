@@ -61,13 +61,13 @@ In the answer:
 - Give each entry point as `EP-id`, the target, `Class.method` and `file:line`, so the user can
   open it.
 - Call out:
-  - `INFERRED` rows: derived through inheritance, programmatic wiring, Kotlin or the regex
-    fallback;
+  - `INFERRED` rows: derived through inheritance, programmatic wiring, Kotlin, Groovy or the
+    regex fallback;
   - `UNKNOWN` rows: a value the scanner could not evaluate;
   - targets with `${...}` placeholders, whose real value comes from configuration;
   - `attrs.disabled`, which marks a schedule that never runs.
 - Carry over every `stats` warning that limits the answer. Examples: unresolved library
-  annotations, Kotlin, parse failures, and a missing `@EnableScheduling`.
+  annotations, Kotlin, Groovy, parse failures, and a missing `@EnableScheduling`.
 - Never present an empty result as proof that something does not exist. Say which filters
   were applied. If the question touches something in `doc not-in-atlas.md`, such as XML
-  wiring, Spring Integration flows or Kotlin precision, say so and how to check.
+  wiring, Spring Integration flows or Kotlin and Groovy precision, say so and how to check.

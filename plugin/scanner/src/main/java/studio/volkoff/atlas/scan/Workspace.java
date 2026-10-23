@@ -132,7 +132,7 @@ public final class Workspace {
 
     private void walk() throws IOException {
         List<Path> buildFiles = new ArrayList<>();
-        List<Path> javaOrKotlin = new ArrayList<>();
+        List<Path> sourceFiles = new ArrayList<>();
         List<Path> xmlFiles = new ArrayList<>();
         List<Path> buildSettings = new ArrayList<>();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
@@ -152,8 +152,8 @@ public final class Workspace {
                 } else if (BUILD_SETTINGS.contains(name)) {
                     buildSettings.add(file);
                 } else if ((name.endsWith(".java") && !name.equals("package-info.java") && !name.equals("module-info.java"))
-                        || name.endsWith(".kt")) {
-                    javaOrKotlin.add(file);
+                        || name.endsWith(".kt") || name.endsWith(".groovy")) {
+                    sourceFiles.add(file);
                 } else if (name.endsWith(".xml") && !isUnderBuildOutput(root.relativize(file))) {
                     xmlFiles.add(file);
                 }
@@ -183,11 +183,12 @@ public final class Workspace {
         countXmlEndpoints(xmlFiles);
         readBasePaths();
 
-        javaOrKotlin.sort(Comparator.comparing(p -> rel(p)));
-        for (Path p : javaOrKotlin) {
+        sourceFiles.sort(Comparator.comparing(p -> rel(p)));
+        for (Path p : sourceFiles) {
             String relPath = rel(p);
-            Origin origin = p.getFileName().toString().endsWith(".kt")
-                    ? Origin.KOTLIN
+            String name = p.getFileName().toString();
+            Origin origin = name.endsWith(".kt") ? Origin.KOTLIN
+                    : name.endsWith(".groovy") ? Origin.GROOVY
                     : isUnderBuildOutput(root.relativize(p)) ? Origin.GENERATED : Origin.SOURCE;
             sources.add(new SourceEntry(p, relPath, moduleOf(relPath), origin));
         }

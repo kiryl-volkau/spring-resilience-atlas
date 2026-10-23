@@ -29,13 +29,13 @@ public final class Git {
     }
 
     /**
-     * Number of Java/Kotlin main-source files that differ between {@code commit} and the working
+     * Number of Java/Kotlin/Groovy main-source files that differ between {@code commit} and the working
      * tree, untracked new files included, ignoring hidden directories and test trees, which the
      * scanner never reads.
      */
     public Integer changedSourceFiles(String commit) {
-        String changed = run("diff", "--name-only", "--relative", commit, "--", "*.java", "*.kt");
-        String untracked = run("ls-files", "--others", "--exclude-standard", "--", "*.java", "*.kt");
+        String changed = run("diff", "--name-only", "--relative", commit, "--", "*.java", "*.kt", "*.groovy");
+        String untracked = run("ls-files", "--others", "--exclude-standard", "--", "*.java", "*.kt", "*.groovy");
         if (changed == null || untracked == null) {
             return null;
         }

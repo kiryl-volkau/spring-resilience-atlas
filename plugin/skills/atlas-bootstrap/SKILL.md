@@ -30,8 +30,8 @@ Report back in a few lines:
 - every `# warning:` line, each with what it means for coverage. Explain only the warnings
   that actually appeared:
   - **Parse failures** were scanned by regex, so those records are `INFERRED` at best.
-  - **Kotlin files** are scanned by regex too: composed annotations and inherited mappings
-    are not resolved there.
+  - **Kotlin and Groovy files** are scanned by regex too: composed annotations and inherited
+    mappings are not resolved there.
   - **Missing interfaces** are generated controller interfaces. The project has to be built
     and rescanned before those endpoints are known.
   - **Messaging libraries without consumers** means consumers may be wired in configuration
