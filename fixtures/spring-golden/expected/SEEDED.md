@@ -17,7 +17,7 @@ Flow: `BillingWebhookController.receiveStripeEvent` → `StripeWebhookService.ha
 | D2 | Unbounded in-memory executor without graceful drain | `billing/config/BillingInfrastructureConfig.java:15` (`Executors.newFixedThreadPool(4)`) | Unbounded `LinkedBlockingQueue` grows under webhook bursts; on shutdown Spring only calls `shutdown()`, without awaiting termination, so queued work is dropped. |
 | D3 | Dual write: DB insert and SQS send in one local transaction | `billing/service/StripeWebhookService.java:45` (`@Transactional`), `:50` (`save`), `:53` (`sqsTemplate.send`) | The SQS message is sent before commit. If the commit fails, the invoice event is already published for a receipt that does not exist; the provider then retries and a second message is sent. No outbox. |
 | D4 | Async task started inside the transaction | `billing/service/StripeWebhookService.java:56` | The submitted task can run before the receipt commits, or after it rolled back. |
-| D5 | Webhook not idempotent | `billing/service/StripeWebhookService.java:46-50`; unused `billing/persistence/EventReceiptRepository.java:9` (`findByProviderEventId`); no unique constraint at `billing/persistence/EventReceipt.java:20` | Stripe redelivers on timeout or non-2xx: duplicate receipts, duplicate SQS messages, duplicate reconciliation. |
+| D5 | Webhook not idempotent | `billing/service/StripeWebhookService.java:46-50`; unused `billing/persistence/EventReceiptRepository.java:9` (`findByProviderEventId`); no unique constraint at `billing/persistence/EventReceipt.java:20` or in `src/main/resources/db/migration/V1__billing.sql`, which indexes `provider_event_id` without `UNIQUE` | Stripe redelivers on timeout or non-2xx: duplicate receipts, duplicate SQS messages, duplicate reconciliation. |
 | D6 | SQS consumer not idempotent | `billing/messaging/InvoiceEventListener.java:25`, `billing/service/InvoiceService.java:31`, `billing/persistence/Invoice.java:45` (`UUID.randomUUID()`) | SQS is at-least-once; every redelivery creates a new invoice and a new charge. |
 | D7 | Remote charge inside a DB transaction | `billing/service/InvoiceService.java:29` (`@Transactional`), `:34` (`createCharge`) | The DB connection is held for the duration of the provider call. If the commit fails after the charge succeeded, money moved with no invoice row; the `AFTER_ROLLBACK` listener at `billing/events/InvoiceNotificationListener.java:27` only logs. |
 | D8 | Charge request without idempotency key | `billing/client/PaymentProviderClient.java:30` | A retried or redelivered message double-charges the payer; the provider cannot deduplicate. |
@@ -38,10 +38,27 @@ Flow: `BillingWebhookController.receiveStripeEvent` → `StripeWebhookService.ha
 `POST /api/billing/webhooks/paypal` → `billing/service/PaypalWebhookService.java` (`handle`).
 The scanner reports `webhook-not-idempotent`, because its lookup patterns do not know the name
 `lookupByReference`. The code is idempotent: `handle` skips a delivery whose PayPal event id was
-already stored, and `billing/persistence/PaypalReceipt.java` puts a unique constraint on that id.
+already stored, and `billing/persistence/PaypalReceipt.java` and the migration put a unique constraint on that id.
 The quick check must answer REFUTED (`lookup before write`, `unique event id`), not CONFIRMED.
 `audit/verdicts-expected.tsv` lists the verdict expected for every place of the fixture that a
 seed decides.
+
+## One remote call under two transactions
+
+`PaymentProviderClient.createCharge` is called inside two different transactions: the one
+`InvoiceService.createInvoiceFromProviderEvent` opens for the invoice consumer (D3), and the one
+`billing/service/ChargeRetryService.java` (`retry`) opens for
+`POST /api/billing/admin/invoices/{invoiceId}/charge [action=retry]`. Each is its own
+`remote-in-tx` place, keyed by the method that opens the transaction, so a verdict on one never
+speaks for the other's operations. `[action=cancel]` on the same path and verb only deletes a
+row: it has no hint, and its `no-hint` place is what `--level NONE` sweeps.
+
+## A shared field that is read back
+
+`legacy/portlet/ResidentAccountPortlet.java`: the singleton portlet stores each user's search
+in the field `lastSearch` (`saveAccount`) and renders it back (`showAccount`), so one user sees
+another's search and every replica shows a different one. The quick check must answer
+CONFIRMED for `shared-field-write`; a field that is written and never read would be harmless.
 
 ## Analyzer regression cases
 

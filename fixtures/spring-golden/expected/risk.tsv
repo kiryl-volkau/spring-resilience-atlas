@@ -13,3 +13,5 @@ LateFeeAccrualJob	LateFeeAccrualJob.execute	NONE		job-without-lock
 0 15 3 * * *	PharmacyStockScheduler.reorderLowStock	NONE		job-without-lock
 VIEW:save	ResidentAccountPortlet.saveAccount	MEDIUM	shared-field-write	
 /api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	MEDIUM	webhook-not-idempotent	webhook-sync-remote,dual-write-in-tx,handoff-after-ack
+/api/billing/admin/invoices/{invoiceId}/charge	BillingAdminController.retryCharge	MEDIUM	remote-in-tx	dual-write-in-tx
+/api/billing/admin/invoices/{invoiceId}/charge	BillingAdminController.cancelCharge	NONE		remote-in-tx

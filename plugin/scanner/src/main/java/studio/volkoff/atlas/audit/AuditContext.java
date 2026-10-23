@@ -3,14 +3,23 @@ package studio.volkoff.atlas.audit;
 import studio.volkoff.atlas.query.AtlasStore;
 import studio.volkoff.atlas.report.Places;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 /** One atlas read once: its operations, places, hypotheses and the slicer over the working tree. */
 final class AuditContext {
@@ -64,6 +73,63 @@ final class AuditContext {
             }
         }
         return out;
+    }
+
+    private static final Pattern MIGRATION_DIR = Pattern.compile(
+            "(^|/)(db/migration|db/changelog|liquibase|flyway|migrations?)(/|$)", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> MIGRATION_EXTENSIONS = Set.of("sql", "xml", "yaml", "yml", "json");
+    private static final Set<String> SKIPPED_DIRS = Set.of(".git", ".reliability", ".idea", "target", "build", "out", "dist",
+            "node_modules", ".gradle", ".mvn");
+    private Map<String, String> migrations;
+
+    /**
+     * Flyway and Liquibase files of the repository, by relative path, with their content in lower
+     * case: where unique indexes live when the entities do not declare them. Read once.
+     */
+    Map<String, String> migrations() throws IOException {
+        if (migrations != null) {
+            return migrations;
+        }
+        Map<String, String> out = new TreeMap<>();
+        Files.walkFileTree(repo, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return !dir.equals(repo) && SKIPPED_DIRS.contains(String.valueOf(dir.getFileName()))
+                        ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                String rel = repo.relativize(file).toString().replace('\\', '/');
+                String name = file.getFileName().toString();
+                String ext = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
+                if (MIGRATION_EXTENSIONS.contains(ext) && MIGRATION_DIR.matcher(rel).find() && attrs.size() < 2_000_000) {
+                    out.put(rel, new String(Files.readAllBytes(file), StandardCharsets.UTF_8).toLowerCase(Locale.ROOT));
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException e) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        migrations = out;
+        return out;
+    }
+
+    private Map<String, List<Map<String, Object>>> typesBySimpleName;
+
+    /** Types of the atlas with this simple name, such as an entity or a repository a write names. */
+    List<Map<String, Object>> types(String simpleName) throws IOException {
+        if (typesBySimpleName == null) {
+            typesBySimpleName = new HashMap<>();
+            for (Map<String, Object> t : atlas.types()) {
+                String fqn = String.valueOf(t.get("fqn"));
+                typesBySimpleName.computeIfAbsent(fqn.substring(fqn.lastIndexOf('.') + 1), k -> new ArrayList<>()).add(t);
+            }
+        }
+        return typesBySimpleName.getOrDefault(simpleName, List.of());
     }
 
     Set<String> declares() {

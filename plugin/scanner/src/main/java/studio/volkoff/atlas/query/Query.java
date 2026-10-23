@@ -24,8 +24,8 @@ public final class Query {
 
     private static final int DEFAULT_LIMIT = 50;
     private static final int MAX_LIMIT = 500;
-    private static final List<String> EP_DEFAULT_FIELDS = List.of("id", "kind", "subkind", "target", "symbol", "loc", "status");
-    private static final List<String> EP_ALL_FIELDS = List.of("id", "kind", "subkind", "target", "symbol", "loc", "status",
+    private static final List<String> EP_DEFAULT_FIELDS = List.of("id", "kind", "subkind", "target", "params", "symbol", "loc", "status");
+    private static final List<String> EP_ALL_FIELDS = List.of("id", "kind", "subkind", "target", "params", "symbol", "loc", "status",
             "domain", "module", "cls", "method", "file", "line", "anno", "origin", "via", "placeholder", "attrs");
     private static final List<String> TYPE_DEFAULT_FIELDS = List.of("fqn", "kind", "stereotypes", "supers", "loc");
 
@@ -434,6 +434,31 @@ public final class Query {
         List<String> parts = new ArrayList<>();
         applied.forEach((k, v) -> parts.add(k + "=" + v));
         return " (" + String.join(" ", parts) + ")";
+    }
+
+    /**
+     * The {@code params} and {@code headers} conditions of an HTTP mapping, which tell handlers on
+     * one path and verb apart: {@code format=csv}, {@code header X-Op=delete}. Empty for other
+     * kinds and for mappings without them.
+     */
+    public static String conditions(Map<String, Object> ep) {
+        if (!"HTTP".equals(ep.get("kind")) || !(ep.get("attrs") instanceof Map<?, ?> a)) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (a.get("params") != null && !a.get("params").toString().isBlank()) {
+            parts.add(a.get("params").toString());
+        }
+        if (a.get("headers") != null && !a.get("headers").toString().isBlank()) {
+            parts.add("header " + a.get("headers"));
+        }
+        return String.join("; ", parts);
+    }
+
+    /** The target as a reader tells operations apart: an HTTP path followed by its {@link #conditions}, such as {@code /orders [format=csv]}. */
+    public static String target(Map<String, Object> ep) {
+        String c = conditions(ep);
+        return ep.get("target") + (c.isEmpty() ? "" : " [" + c + "]");
     }
 
     public static String symbol(String cls, String method) {

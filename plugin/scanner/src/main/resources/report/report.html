@@ -551,8 +551,27 @@ function opLabel(o) {
     return {verb: verb, text: t, muted: true};
   }
   if (k === "SCHEDULED" && s !== "CRON") { var d = schedule(t); return {verb: verb, text: d.text, title: d.title}; }
-  return {verb: verb, text: t};
+  return {verb: verb, text: t + conditions(o)};
 }
+/** " [format=csv]": the params and headers that tell HTTP handlers on one path apart. */
+function conditions(o) {
+  var a = o.attrs || {}, parts = [];
+  if (o.kind !== "HTTP") return "";
+  if (a.params) parts.push(a.params);
+  if (a.headers) parts.push("header " + a.headers);
+  return parts.length ? " [" + parts.join("; ") + "]" : "";
+}
+/** Why an analysed operation without a hint has none: what its path changes. */
+var STATE_SIGNALS = {"transactional": false, "idempotency-check": false, "lock": false, "retry": false};
+function unhinted(o) {
+  if (!o.reach.analysed || o.reasons.length) return null;
+  var changes = {};
+  o.effects.forEach(function (e) { if (!(e.s in STATE_SIGNALS)) changes[e.s] = true; });
+  var keys = Object.keys(changes);
+  if (!keys.length) return "readOnly";
+  return keys.length === 1 && changes["db-write"] ? "ownDatabase" : "other";
+}
+var UNHINTED_LABEL = {readOnly: "Changes nothing on the path read", ownDatabase: "Writes only its own database", other: "No pattern matched"};
 function handlerHtml(o) { return '<span class="hcls">' + esc(o.cls) + ".</span><b>" + esc(o.method) + "</b>"; }
 function handler(o) { return o.cls + "." + o.method; }
 function where(o) { return FILES[o.file] + ":" + o.line; }
@@ -652,7 +671,10 @@ SPOTS.push({title: "How deep the scan reads", text: "The entry method, the metho
       fmt((pl.mitigated || 0) + (pl.refuted || 0)) + " mitigated or refuted" + (pl.uncertain ? ", " + fmt(pl.uncertain) + " uncertain" : "") +
       (pl.unjudged ? ", " + fmt(pl.unjudged) + " unjudged" : "") + (pl.stale ? ", " + fmt(pl.stale) + " stale" : "") + ".";
     fine = "A quick check by a small model: suspected means the pattern is there and no mitigation was found in the code it read, not a verified defect. " +
-      plural((op.total || 0) - (op.withHint || 0) - (op.notAnalysed || 0), "operation") + " without a high or medium hint and " + plural(op.notAnalysed || 0, "operation") + " not analysed were not checked." +
+      (op.noHint ? plural(op.lowOnly || 0, "operation") + " with only low hints and " + plural((op.noHint.ownDatabase || 0) + (op.noHint.other || 0), "operation") +
+        " without a hint that still change state are checked only when asked (--level LOW, --level NONE); " + plural(op.noHint.readOnly || 0, "operation") +
+        " change nothing on the path the scan read." : plural((op.total || 0) - (op.withHint || 0) - (op.notAnalysed || 0), "operation") + " without a high or medium hint were not checked.") +
+      " " + plural(op.notAnalysed || 0, "operation") + " not analysed." +
       (cov.budget && cov.budget.usdSpent != null ? " Estimated spend $" + Number(cov.budget.usdSpent).toFixed(2) + (cov.budget.usdCap ? " of a $" + Number(cov.budget.usdCap).toFixed(2) + " cap" : "") + "." : "") +
       (D.backlog ? ' Tasks: <a href="' + esc(D.backlog) + '">backlog</a>.' : "");
   } else if (audited) {
@@ -669,7 +691,11 @@ SPOTS.push({title: "How deep the scan reads", text: "The entry method, the metho
     if (byLevel.MEDIUM) head += ", and <strong>" + fmt(byLevel.MEDIUM) + (byLevel.HIGH ? " more" : "") + "</strong> can duplicate or stall work under retries, restarts or several replicas";
     head += ".";
     if (patternList[0] && LEVELS.indexOf(patternList[0].level) <= 1) head += " Leading pattern: " + esc(patternList[0].title.toLowerCase()) + " (" + plural(patternList[0].n, "operation") + ").";
+    var why = {readOnly: 0, ownDatabase: 0, other: 0};
+    OPS.forEach(function (o) { var u = unhinted(o); if (u) why[u]++; });
     fine = "Code hints from a static scan, not verdicts. Broken, Smells and OK appear only after an audit traces a flow and checks it with file-and-line evidence." +
+      (why.readOnly + why.ownDatabase + why.other ? " Of the operations without a hint, " + fmt(why.readOnly) + " change nothing on the path the scan read, " + fmt(why.ownDatabase) +
+        " write only their own database and " + fmt(why.other) + " do more without matching a pattern." : "") +
       (notAnalysed ? " " + plural(notAnalysed, "operation") + " could not be analysed at all." : "");
   }
   el("state").innerHTML = icon + '<div><p class="headline">' + head + '</p><p class="fine">' + fine + "</p></div>";
@@ -741,7 +767,7 @@ function opLink(o) {
     }
   }
   var flagged = OPS.filter(function (o) { return o.level === "HIGH" || o.level === "MEDIUM"; }).length;
-  var list = arr(D.places);
+  var list = arr(D.places).filter(function (p) { return p.level === "HIGH" || p.level === "MEDIUM"; });
   if (!list.length) {
     el("attention-lede").textContent = "";
     el("top").innerHTML = '<div class="empty">' + (analysedOps
@@ -757,7 +783,9 @@ function opLink(o) {
     var ops = sortedByAttention(p.ops.map(function (id) { return OP_BY_ID[id]; }).filter(Boolean));
     var sample = OP_BY_ID[p.o];
     return '<div class="card"><div class="row1">' + levelPill(p.level) + (audited ? placePill(p) : "") + '<span class="title">' + esc(p.title) + "</span></div>" +
-      '<p class="why">' + esc(p.verdict && p.summary ? p.summary : ruleText(p.code)) + "</p>" + (sample ? evidenceHtml(sample, p.ev, false) : "") +
+      '<p class="why">' + esc(p.verdict && p.summary ? p.summary : ruleText(p.code)) + "</p>" +
+      (p.boundary ? '<p class="sub">Transaction opened in <span class="mono">' + esc(p.symbol) + "</span> (" + esc(fileName(FILES[p.file])) + ":" + p.line + ")</p>" : "") +
+      (sample ? evidenceHtml(sample, p.ev, false) : "") +
       '<div class="affects"><span class="sub">' + (ops.length > 1 ? "Reached from " + plural(ops.length, "operation") : "Reached from") + "</span>" +
       ops.slice(0, 4).map(opLink).join("") + (ops.length > 4 ? '<span class="sub">+ ' + fmt(ops.length - 4) + " more</span>" : "") + "</div></div>";
   }).join("");
@@ -801,7 +829,7 @@ var state = {q: "", seg: "", sort: "attention", dir: 1, shown: CHUNK, open: {}};
 OPS.forEach(function (o, i) {
   o._i = i;
   o._signals = signalsOf(o);
-  o._search = [o.id, o.kind, o.subkind, o.target, o.cls, o.pkg, o.method, FILES[o.file], o.area, o.tags.join(" "),
+  o._search = [o.id, o.kind, o.subkind, o.target + conditions(o), o.cls, o.pkg, o.method, FILES[o.file], o.area, o.tags.join(" "),
     o.reasons.map(function (r) { return r.title; }).join(" "), o._signals.join(" ")].join(" ").toLowerCase();
 });
 var COLS = [];
@@ -877,7 +905,7 @@ function whyHtml(o) {
   var chips = o._signals.filter(function (s) { return SIGNALS[s] && (SIGNALS[s].risk || SIGNALS[s].mit); }).map(chip).join("");
   var head = r0
     ? '<div class="trunc why-t" title="' + esc(ruleText(r0.code)) + '">' + esc(r0.title) + "</div>" + (o.reasons.length > 1 ? '<div class="sub">+ ' + plural(o.reasons.length - 1, "more pattern") + "</div>" : "")
-    : '<span class="sub">' + (o.reach.analysed ? "No pattern on the path read" : "Code not analysed") + "</span>";
+    : '<span class="sub">' + (o.reach.analysed ? UNHINTED_LABEL[unhinted(o)] : "Code not analysed") + "</span>";
   return head + (chips ? '<div class="chips">' + chips + "</div>" : "");
 }
 function rowHtml(o) {
@@ -923,7 +951,7 @@ function factsHtml(o) {
   var rows = [];
   function row(k, v) { if (v != null && v !== "") rows.push("<dt>" + esc(k) + "</dt><dd>" + v + "</dd>"); }
   row("Kind", esc((KIND_LABEL[o.kind] || o.kind) + " · " + (SUBKIND_LABEL[o.subkind] || human(o.subkind))));
-  row("Target", '<span class="mono">' + brk(o.target) + "</span>");
+  row("Target", '<span class="mono">' + brk(o.target + conditions(o)) + "</span>");
   row("Handler", '<span class="mono">' + brk(o.pkg ? o.pkg + "." : "") + "<b>" + brk(handler(o)) + "</b></span>");
   row("Source", '<span class="mono">' + brk(where(o)) + "</span>");
   if (o.module && o.module !== ".") row("Module", '<span class="mono">' + brk(o.module) + "</span>");
@@ -1001,7 +1029,7 @@ function detailHtml(o) {
         (fresh.length > 3 ? '<p class="note">+ ' + plural(fresh.length - 3, "more place") + " in the list below</p>" : "") + "</div>";
     }).join("");
   } else {
-    left += '<p class="sub" style="margin:0">' + (o.reach.analysed ? "No risk pattern on the path the scanner read." : "No hint: the call path was not analysed.") + "</p>";
+    left += '<p class="sub" style="margin:0">' + (o.reach.analysed ? UNHINTED_LABEL[unhinted(o)] + ": no risk pattern on the path the scanner read." : "No hint: the call path was not analysed.") + "</p>";
   }
   left += reachHtml(o) + "</div>";
   if (o.effects.length) left += '<details class="dcard"' + (o.effects.length <= 6 ? " open" : "") + "><summary><h4>Everything seen on the path · " + o.effects.length + "</h4></summary>" + effectsTable(o) + "</details>";

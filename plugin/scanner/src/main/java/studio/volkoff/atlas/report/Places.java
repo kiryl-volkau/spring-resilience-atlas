@@ -1,6 +1,8 @@
 package studio.volkoff.atlas.report;
 
+import studio.volkoff.atlas.effects.Signals;
 import studio.volkoff.atlas.query.AtlasStore;
+import studio.volkoff.atlas.query.Query;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -17,11 +19,20 @@ import java.util.Set;
 
 /**
  * Places in the code where one fix covers every operation that reaches them: a rule code, the
- * file of the rule's first evidence and the method enclosing it. Only HIGH and MEDIUM reasons
- * form places. The evidence line is an attribute, not part of the key, so a shifted line keeps
- * the place and its id.
+ * file of the rule's first evidence and the method enclosing it. For a rule about a transaction
+ * the place is the method that opened the transaction instead, since the fix moves that
+ * boundary, and evidence under different boundaries forms different places. Every reason forms
+ * places, LOW ones too; an analysed operation with effects and no reason gets one
+ * {@value #NO_HINT} place of its own, so a sweep can look for what the rules missed. The
+ * evidence line is an attribute, not part of the key, so a shifted line keeps the place and its id.
  */
 public final class Places {
+
+    /** The rule code of an operation's sweep place: effects on its path, no rule fired. */
+    public static final String NO_HINT = "no-hint";
+    /** Rules whose evidence only matters inside a transaction: their place is the transaction's boundary. */
+    public static final Set<String> TX_RULES = Set.of("async-in-tx", "dual-write-in-tx", "remote-in-tx", "notification-in-tx", "event-in-tx");
+    private static final Set<String> CONTEXT_SIGNALS = Set.of(Signals.TX, Signals.IDEMPOTENCY, Signals.LOCK, Signals.RETRY);
 
     /** One operation with its effects and the assessment computed from them. */
     public record Input(Map<String, Object> ep, List<Map<String, Object>> effects, Risk.Assessment assessment) {
@@ -44,6 +55,11 @@ public final class Places {
 
         public String title() {
             return Risk.RULES.get(code)[0];
+        }
+
+        /** The levels a quick check plans unless asked for more. */
+        public boolean defaultScope() {
+            return level == Risk.Level.HIGH || level == Risk.Level.MEDIUM;
         }
     }
 
@@ -81,21 +97,42 @@ public final class Places {
         Map<String, List<String>> keysByOp = new LinkedHashMap<>();
         for (Input in : inputs) {
             List<String> keys = new ArrayList<>();
-            for (Risk.Reason r : in.assessment().reasons()) {
-                if (r.level() != Risk.Level.HIGH && r.level() != Risk.Level.MEDIUM || r.evidence().isEmpty()) {
-                    continue;
+            List<Risk.Reason> reasons = in.assessment().reasons();
+            if (reasons.isEmpty() && !stateSignals(in.effects()).isEmpty()) {
+                List<Integer> all = new ArrayList<>();
+                for (int i = 0; i < in.effects().size(); i++) {
+                    all.add(i);
                 }
-                int first = r.evidence().get(0);
-                if (first < 0 || first >= in.effects().size()) {
-                    continue;
-                }
-                Map<String, Object> e = in.effects().get(first);
-                String key = key(r.code(), String.valueOf(e.get("file")), String.valueOf(e.get("symbol")));
-                Builder b = byKey.computeIfAbsent(key, k -> new Builder(r.code(), String.valueOf(e.get("file")),
-                        String.valueOf(e.get("symbol")), in.id(), first));
-                b.add(in, r, line(e));
-                if (!keys.contains(key)) {
-                    keys.add(key);
+                reasons = List.of(new Risk.Reason(NO_HINT, Risk.Level.NONE, all));
+            }
+            for (Risk.Reason r : reasons) {
+                for (List<Integer> evidence : groups(r, in.effects())) {
+                    if (evidence.isEmpty()) {
+                        continue;
+                    }
+                    int first = evidence.get(0);
+                    Map<String, Object> e = in.effects().get(first);
+                    String file = String.valueOf(e.get("file"));
+                    String symbol = String.valueOf(e.get("symbol"));
+                    int line = line(e);
+                    String owner = TX_RULES.contains(r.code()) && e.get("txOwner") != null ? String.valueOf(e.get("txOwnerAt")) : "";
+                    if (r.code().equals(NO_HINT)) {
+                        file = String.valueOf(in.ep().get("file"));
+                        symbol = Query.symbol(String.valueOf(in.ep().get("cls")), String.valueOf(in.ep().get("method")));
+                        line = in.ep().get("line") instanceof Number n ? n.intValue() : 0;
+                    } else if (owner.lastIndexOf(':') > 0) {
+                        file = owner.substring(0, owner.lastIndexOf(':'));
+                        symbol = String.valueOf(e.get("txOwner"));
+                        line = Integer.parseInt(owner.substring(owner.lastIndexOf(':') + 1));
+                    }
+                    String key = key(r.code(), file, symbol);
+                    String f = file;
+                    String s = symbol;
+                    Builder b = byKey.computeIfAbsent(key, k -> new Builder(r.code(), f, s, in.id(), first));
+                    b.add(in, r.level(), evidence, line);
+                    if (!keys.contains(key)) {
+                        keys.add(key);
+                    }
                 }
             }
             keysByOp.put(in.id(), keys);
@@ -110,6 +147,43 @@ public final class Places {
         Map<String, List<String>> placeIdsByOp = new LinkedHashMap<>();
         keysByOp.forEach((op, keys) -> placeIdsByOp.put(op, keys.stream().map(ids::get).toList()));
         return new Result(places, placeIdsByOp);
+    }
+
+    /** The signals on a path that change something: writes, sends, calls, hand-offs, state; not transactions, checks, locks or retries. */
+    public static Set<String> stateSignals(List<Map<String, Object>> effects) {
+        Set<String> out = new java.util.TreeSet<>();
+        for (Map<String, Object> e : effects) {
+            out.add(String.valueOf(e.get("signal")));
+        }
+        out.removeAll(CONTEXT_SIGNALS);
+        return out;
+    }
+
+    /**
+     * The reason's evidence, split by transaction boundary for a {@link #TX_RULES} rule; out-of-range
+     * indexes dropped. Evidence outside every transaction is left out once some lies inside one, and a
+     * dual write inside a transaction keeps only the boundaries that hold a send. An atlas without
+     * owners gives one group, as before.
+     */
+    private static List<List<Integer>> groups(Risk.Reason r, List<Map<String, Object>> effects) {
+        Map<String, List<Integer>> byOwner = new LinkedHashMap<>();
+        for (int i : r.evidence()) {
+            if (i < 0 || i >= effects.size()) {
+                continue;
+            }
+            Object owner = TX_RULES.contains(r.code()) ? effects.get(i).get("txOwnerAt") : null;
+            byOwner.computeIfAbsent(owner == null ? "" : owner.toString(), k -> new ArrayList<>()).add(i);
+        }
+        if (byOwner.size() > 1) {
+            byOwner.remove("");
+            if (r.code().equals("dual-write-in-tx")) {
+                byOwner.values().removeIf(g -> g.stream().noneMatch(i -> Signals.MESSAGE.equals(effects.get(i).get("signal"))));
+            }
+            if (byOwner.isEmpty()) {
+                return List.of(r.evidence().stream().filter(i -> i >= 0 && i < effects.size()).toList());
+            }
+        }
+        return new ArrayList<>(byOwner.values());
     }
 
     private static final class Builder {
@@ -133,19 +207,16 @@ public final class Places {
             this.sampleEffect = sampleEffect;
         }
 
-        void add(Input in, Risk.Reason r, int firstLine) {
-            if (r.level().ordinal() < level.ordinal()) {
-                level = r.level();
+        void add(Input in, Risk.Level reasonLevel, List<Integer> evidence, int firstLine) {
+            if (reasonLevel.ordinal() < level.ordinal()) {
+                level = reasonLevel;
             }
             line = Math.min(line, firstLine);
             maxScore = Math.max(maxScore, in.assessment().score());
             if (!ops.contains(in.id())) {
                 ops.add(in.id());
             }
-            for (int i : r.evidence()) {
-                if (i < 0 || i >= in.effects().size()) {
-                    continue;
-                }
+            for (int i : evidence) {
                 Map<String, Object> e = in.effects().get(i);
                 if (seenEffects.add(e.get("file") + ":" + e.get("line") + ":" + e.get("detail"))) {
                     reasonEffects.add(e);

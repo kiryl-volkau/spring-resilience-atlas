@@ -71,6 +71,8 @@ HTTP	GET	/api/visits/slots	VisitBookingController.slots	STATIC
 HTTP	GET	/legacy/login	LegacyStatusController.loginPage	STATIC
 HTTP	GET,POST	/api/billing/admin/recalculate	BillingAdminController.recalculateBalances	STATIC
 HTTP	PATCH	/api/crm/leads/{leadId}/status	CrmLeadController.changeStatus	INFERRED
+HTTP	POST	/api/billing/admin/invoices/{invoiceId}/charge	BillingAdminController.cancelCharge	STATIC
+HTTP	POST	/api/billing/admin/invoices/{invoiceId}/charge	BillingAdminController.retryCharge	STATIC
 HTTP	POST	/api/billing/admin/invoices/{invoiceId}/reissue	BillingAdminController.reissueInvoice	STATIC
 HTTP	POST	/api/billing/invoices/{invoiceId}/void	InvoiceQueryController.voidInvoice	INFERRED
 HTTP	POST	/api/billing/webhooks/stripe	BillingWebhookController.receiveStripeEvent	STATIC

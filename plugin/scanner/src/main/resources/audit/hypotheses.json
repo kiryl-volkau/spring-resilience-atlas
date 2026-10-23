@@ -268,12 +268,112 @@
       "verify": "Force a rollback after the notification is queued; no user may be notified.",
       "declares": []
     },
-    "notification-handoff": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
-    "timer-handoff": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
-    "async-response": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
-    "background-thread": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
-    "in-memory-cache": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
-    "event-in-tx": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
-    "read-verb-writes": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"}
+    "notification-handoff": {
+      "inScope": true,
+      "hypothesis": "A message to users (e-mail, SMS, chat) is sent on another thread after the work returns; a restart loses the ones still queued.",
+      "check": "Must the user get this notification, or is it best effort? Is it recorded durably before the hand-off? Does anything resend a lost one?",
+      "mitigations": [
+        {"name": "persisted notification", "kind": "refutes", "text": "the notification is stored (an outbox row or a queue message) before the hand-off, and a job or consumer sends it"},
+        {"name": "send awaited", "kind": "refutes", "text": "the future of the send is joined or awaited before the work returns"},
+        {"name": "best-effort by owner", "kind": "mitigates", "text": "the code states the notification is best effort (a comment, a name or a log that says so)"}
+      ],
+      "cite": "the hand-off line; the send; the durable record or its absence",
+      "fix": "Store the notification in the same transaction as the change and send it from a job or a broker consumer, or state that losing it is acceptable.",
+      "verify": "Stop the instance right after the operation returns; the notification must still go out, or its loss must be accepted.",
+      "declares": []
+    },
+    "timer-handoff": {
+      "inScope": true,
+      "hypothesis": "Work is scheduled to run later on an in-process timer; if the instance restarts before it fires, the work never happens.",
+      "check": "Does the delayed work matter to the business? Is the due work stored anywhere durable? Does a startup hook or a scheduled job pick up what was missed?",
+      "mitigations": [
+        {"name": "persisted schedule", "kind": "refutes", "text": "the due work is stored with its time, and a scheduled job or a startup hook runs what is due"},
+        {"name": "re-derived on startup", "kind": "refutes", "text": "a startup hook or a scheduled job re-derives the pending work from durable state"},
+        {"name": "best-effort by owner", "kind": "mitigates", "text": "the code states the delayed work is best effort, such as a cache refresh or a reminder that may be skipped"}
+      ],
+      "cite": "the schedule call; where the due work is stored, or its absence",
+      "fix": "Store the due work with its time and run it from a scheduled job or a persistent scheduler (Quartz with a JDBC store, db-scheduler, JobRunr).",
+      "verify": "Schedule the work, restart the instance before it fires; it must still run.",
+      "declares": ["quartz", "shedlock"]
+    },
+    "async-response": {
+      "inScope": true,
+      "hypothesis": "The handler returns a Mono, future or emitter and the client waits; a restart fails the request, and a client that retries may repeat work the first attempt already did.",
+      "check": "Does the asynchronous work write, send or call out? Can a retried request repeat that? Is the work durable before the response completes?",
+      "mitigations": [
+        {"name": "reads only", "kind": "refutes", "text": "the asynchronous work only reads; a retry repeats nothing"},
+        {"name": "idempotent by key", "kind": "refutes", "text": "writes and sends are keyed by a request or business id, so a retried request does not repeat them"},
+        {"name": "durable before response", "kind": "mitigates", "text": "the work is committed before the response completes, so a failed response leaves a consistent state"}
+      ],
+      "cite": "the returned future or publisher; the writes and sends it performs; the key or check that makes a retry safe, or its absence",
+      "fix": "Make the asynchronous writes idempotent by a request id, or commit the work before completing the response.",
+      "verify": "Kill the instance while the request is in flight, retry it; the end state must match one successful request.",
+      "declares": []
+    },
+    "background-thread": {
+      "inScope": true,
+      "hypothesis": "A thread or recurring task started at startup or shutdown does work that a restart interrupts; work in flight is lost or repeated.",
+      "check": "What does the thread do: housekeeping or business work? Is it stopped cleanly on shutdown? Is its work reconstructed from durable state after a restart?",
+      "mitigations": [
+        {"name": "housekeeping only", "kind": "refutes", "text": "the work is per-instance housekeeping (metrics, cache refresh, connection keep-alive) whose loss changes no business state"},
+        {"name": "work is durable", "kind": "refutes", "text": "the work it processes is read from durable state and marked done there, so a restart resumes it"},
+        {"name": "stopped on shutdown", "kind": "mitigates", "text": "the thread or executor is shut down and drained in @PreDestroy, SmartLifecycle.stop or a shutdown hook"}
+      ],
+      "cite": "where the thread starts; what it does; how it stops",
+      "fix": "Drive the work from durable state (claimed rows, a queue) and stop the thread cleanly on shutdown.",
+      "verify": "Stop the instance while the thread is working; after restart nothing may be lost or done twice.",
+      "declares": []
+    },
+    "in-memory-cache": {
+      "inScope": true,
+      "hypothesis": "A cache, counter or lock map lives in instance memory; that is wrong when it is the only copy of a fact, or when replicas must agree on it.",
+      "check": "Is the value derived from a durable source, or is memory its only copy? Do replicas need the same value (rate limits, locks, sequence numbers)?",
+      "mitigations": [
+        {"name": "derived data", "kind": "refutes", "text": "every value can be recomputed from a durable source, such as a cache with a loader"},
+        {"name": "shared store", "kind": "refutes", "text": "the structure is backed by a shared store (Redis, Hazelcast, the database)"},
+        {"name": "single replica stated", "kind": "mitigates", "text": "the code states the application runs as one instance (recorded as an assumption)"}
+      ],
+      "cite": "the write to the in-memory structure; its durable source, or its absence",
+      "fix": "Keep facts that matter in a shared store, and use memory only as a cache that can be rebuilt.",
+      "verify": "Run two replicas or restart one; the value must agree or be rebuilt correctly.",
+      "declares": []
+    },
+    "event-in-tx": {
+      "inScope": true,
+      "hypothesis": "An in-process event is published inside a transaction; plain @EventListener methods run before the commit and may act on data that then rolls back.",
+      "check": "Which listeners handle the event? Do they act outside the transaction (send, call, notify, another data source)? Do they run before the commit?",
+      "mitigations": [
+        {"name": "after-commit listeners", "kind": "refutes", "text": "every listener of the event is a @TransactionalEventListener after commit, or registers its work after the commit"},
+        {"name": "same transaction only", "kind": "refutes", "text": "the listeners only change data inside the same transaction, which rolls back with it"},
+        {"name": "idempotent reaction", "kind": "mitigates", "text": "the listener's outside effect is checked or keyed, so acting on a rolled-back change is harmless"}
+      ],
+      "cite": "the publish; the transaction boundary; each listener's outside effect",
+      "fix": "Handle the event with @TransactionalEventListener(phase = AFTER_COMMIT), or publish it through an outbox.",
+      "verify": "Force a rollback after the publish; no listener may have acted outside the transaction.",
+      "declares": []
+    },
+    "read-verb-writes": {
+      "inScope": true,
+      "hypothesis": "A GET or HEAD request writes or sends; clients, proxies and crawlers retry and prefetch these freely, so the write repeats.",
+      "check": "What does the write change? Is it the same on every call? Could a crawler or a prefetch trigger it?",
+      "mitigations": [
+        {"name": "same result on repeat", "kind": "refutes", "text": "the write sets the same value on every call (an upsert of the same row), so a repeat changes nothing"},
+        {"name": "access record only", "kind": "mitigates", "text": "the write only records the access (audit log, last-seen time), where repeats are harmless"}
+      ],
+      "cite": "the HTTP verb; the write or send",
+      "fix": "Move the change to a POST, PUT or PATCH, or make it idempotent.",
+      "verify": "Call the GET twice; the state must not change the second time.",
+      "declares": []
+    },
+    "no-hint": {
+      "inScope": true,
+      "hypothesis": "The scan matched no failure pattern on this operation, although it writes, sends or calls out. A rule may have missed one.",
+      "check": "Read the entry method and the listed effects. Is the caller answered before the work is durable? Can a retry or redelivery repeat a write, send or call? Is a remote call or send inside a transaction? Can a crash split a write from a send? Is a fact kept only in memory?",
+      "mitigations": [],
+      "cite": "the lines that show the failure, or the lines that make the path safe",
+      "fix": "Fix it as the named rule's task says.",
+      "verify": "Verify it as the named rule's task says.",
+      "declares": []
+    }
   }
 }

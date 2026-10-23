@@ -35,7 +35,7 @@ need a local shell and a JDK, so they work in Claude Code, not in claude.ai chat
 | `/resilience-audit:entrypoint-catalog` | Answers questions about endpoints, consumers, jobs and listeners from the atlas instead of grepping |
 | `/resilience-audit:domain-cartographer` | Maps packages to business domains so queries and audits can filter by domain |
 | `/resilience-audit:critical-flow-tracer` | Traces one business flow into a flow file where every claim has file-and-line evidence |
-| `/resilience-audit:audit` | Checks the report's high and medium hints with a cheap model, one hypothesis per place in the code. It first prints the plan and its estimated cost and spends nothing; `--yes <plan-id>` runs exactly that plan within a hard cap. Filters such as `--package` or `--rule` check a selection. Results appear in the report and in `.reliability/backlog.md` |
+| `/resilience-audit:audit` | Checks the report's high and medium hints with a cheap model, one hypothesis per place in the code. It first prints the plan and its estimated cost and spends nothing; `--yes <plan-id>` runs exactly that plan within a hard cap. Filters such as `--package` or `--rule` check a selection; `--level LOW` adds the low hints and `--level NONE` sweeps operations without a hint that still write, send or call out. Results appear in the report and in `.reliability/backlog.md` |
 
 A level on the report (High, Medium, Low) is a code hint that says where to look first. It is
 not a verdict, and an operation without a hint is not declared safe. A place the quick check
@@ -47,7 +47,7 @@ The report costs nothing beyond one short Haiku turn. The quick check runs one `
 agent (Haiku by default) per batch of up to eight places; the plan prints its token and dollar
 estimate before anything runs, and the run stops at the cap (twice the estimate unless you set
 `--max-usd`). Places already checked are not checked again until their code changes. On the
-plugin's test application, 15 places cost $0.04 on Haiku, estimate included.
+plugin's test application, 16 places cost $0.04 to $0.05 on Haiku, close to the estimate.
 
 The cap applies to the plugin's estimate of each batch, counted when the batch starts. The
 plugin cannot see your bill, so the real cost can differ from the estimate.

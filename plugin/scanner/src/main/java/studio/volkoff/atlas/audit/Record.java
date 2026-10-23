@@ -25,14 +25,16 @@ final class Record {
 
     static final Set<String> VERDICTS = Set.of("CONFIRMED", "REFUTED", "MITIGATED", "UNCERTAIN");
     static final Set<String> CONFIDENCES = Set.of("HIGH", "MEDIUM", "LOW");
-    static final Set<String> RESULTS = Set.of("FOUND", "NOT_FOUND", "NOT_CHECKED");
+    static final Set<String> RESULTS = Set.of("FOUND", "PARTIAL", "NOT_FOUND", "NOT_CHECKED");
     static final Set<String> NEEDS = Set.of("file", "symbol", "config", "runtime");
+    /** What a checker may write in {@code remaining} to say nothing is left, compared lower-case without the final period. */
+    static final Set<String> NOTHING_LEFT = Set.of("", "none", "nothing", "no", "-", "n/a");
     /**
      * Fields the scanner stamps; a draft that writes one is rejected, so a model can never set its
      * own tier or freshness. Other unknown fields are dropped.
      */
     static final Set<String> STAMPED = Set.of("tier", "model", "batch", "commit", "core", "opened", "openedFiles", "recordedAt",
-            "status", "fingerprint");
+            "status", "fingerprint", "draftVerdict", "downgraded", "overBudget");
 
     private Record() {
     }
@@ -118,7 +120,7 @@ final class Record {
                 if (d == null) {
                     row = unjudged(pid, place, plan, batchId, commit, core, now, whole != null ? whole : "partial", List.of());
                 } else {
-                    List<String> problems = validate(d, ctx.hypotheses.get(place.code()), verifier);
+                    List<String> problems = validate(d, place.code(), ctx.hypotheses.get(place.code()), Packet.ruleCodes(ctx), verifier);
                     if (!core.equals(plannedCore.get(pid))) {
                         problems.add("CHANGED_SINCE_PACKET: the code behind the place changed after the packet was written");
                     }
@@ -163,7 +165,8 @@ final class Record {
     }
 
     /** Problems with one drafted row; empty when the row can be stored. */
-    static List<String> validate(Map<String, Object> d, Hypotheses.Hypothesis h, EvidenceVerifier verifier) throws Exception {
+    static List<String> validate(Map<String, Object> d, String code, Hypotheses.Hypothesis h, List<String> ruleCodes,
+                                 EvidenceVerifier verifier) throws Exception {
         List<String> problems = new ArrayList<>();
         for (String f : STAMPED) {
             if (d.containsKey(f)) {
@@ -200,13 +203,19 @@ final class Record {
                 problems.add("UNCERTAIN needs \"needs\": {kind: file|symbol|config|runtime, what, wouldOpen}");
             }
         }
+        if ((verdict.equals("REFUTED") || verdict.equals("MITIGATED")) && !(d.get("remaining") instanceof String)) {
+            problems.add(verdict + " needs \"remaining\": \"none\" or how the failure still happens");
+        }
+        if (code.equals(Places.NO_HINT) && verdict.equals("CONFIRMED") && !ruleCodes.contains(String.valueOf(d.get("foundRule")))) {
+            problems.add("a CONFIRMED no-hint place needs \"foundRule\", one of " + String.join(", ", ruleCodes) + "; got " + d.get("foundRule"));
+        }
         Map<String, String> checked = new LinkedHashMap<>();
         if (d.get("mitigationsChecked") instanceof List<?> mc) {
             for (Object o : mc) {
                 if (o instanceof Map<?, ?> m) {
                     String result = String.valueOf(m.get("result"));
                     if (!RESULTS.contains(result)) {
-                        problems.add("mitigation " + m.get("name") + ": result " + result + " is not FOUND, NOT_FOUND or NOT_CHECKED");
+                        problems.add("mitigation " + m.get("name") + ": result " + result + " is not FOUND, PARTIAL, NOT_FOUND or NOT_CHECKED");
                     }
                     checked.put(normal(String.valueOf(m.get("name"))), result);
                 }
@@ -226,7 +235,29 @@ final class Record {
     private static Map<String, Object> accepted(Map<String, Object> d, Places.Place place, Packet.PlaceView view, Map<String, Object> plan,
                                                 String batchId, String commit, String core, String now, Path repo) {
         Map<String, Object> row = base(place.id(), place, plan, batchId, commit, core, now);
-        row.put("verdict", d.get("verdict"));
+        String verdict = String.valueOf(d.get("verdict"));
+        String remaining = remaining(d);
+        boolean fullMitigation = d.get("mitigationsChecked") instanceof List<?> found
+                && found.stream().anyMatch(o -> o instanceof Map<?, ?> m && "FOUND".equals(m.get("result")));
+        String downgraded = null;
+        if (verdict.equals("MITIGATED") && (remaining != null || !fullMitigation)) {
+            downgraded = remaining != null ? "the check names a failure that remains: " + remaining : "no listed mitigation was found in full";
+            verdict = "CONFIRMED";
+        } else if (verdict.equals("REFUTED") && remaining != null) {
+            downgraded = "the check names a failure it could not rule out: " + remaining;
+            verdict = "UNCERTAIN";
+        }
+        row.put("verdict", verdict);
+        if (downgraded != null) {
+            row.put("draftVerdict", d.get("verdict"));
+            row.put("downgraded", downgraded);
+        }
+        if (remaining != null) {
+            row.put("remaining", remaining);
+        }
+        if (place.code().equals(Places.NO_HINT) && d.get("foundRule") != null && verdict.equals("CONFIRMED")) {
+            row.put("foundRule", d.get("foundRule"));
+        }
         String confidence = String.valueOf(d.get("confidence"));
         boolean notChecked = d.get("mitigationsChecked") instanceof List<?> mc
                 && mc.stream().anyMatch(o -> o instanceof Map<?, ?> m && "NOT_CHECKED".equals(m.get("result")));
@@ -243,11 +274,18 @@ final class Record {
         List<String> opened = new ArrayList<>();
         List<String> outside = new ArrayList<>();
         Set<String> packetFiles = view.files();
+        String root = repo.toString().replace('\\', '/') + "/";
         if (d.get("filesOpened") instanceof List<?> l) {
             for (Object o : l) {
                 String f = String.valueOf(o).replace('\\', '/');
+                if (f.regionMatches(true, 0, root, 0, root.length())) {
+                    f = f.substring(root.length());
+                }
+                if (f.startsWith(".reliability/") || f.contains("/.reliability/") || opened.contains(f)) {
+                    continue;
+                }
                 opened.add(f);
-                if (!packetFiles.contains(f) && !outside.contains(f)) {
+                if (!packetFiles.contains(f)) {
                     outside.add(f);
                 }
             }
@@ -255,8 +293,8 @@ final class Record {
         row.put("filesOpened", opened);
         row.put("openedFiles", outside);
         row.put("opened", Fingerprint.opened(repo, outside));
-        if (outside.size() > Packet.EXTRA_FILES_PER_PLACE) {
-            row.put("overBudget", outside.size());
+        if (opened.size() > Packet.EXTRA_FILES_PER_PLACE) {
+            row.put("overBudget", opened.size());
         }
         row.put("status", "CURRENT");
         return row;
@@ -298,11 +336,27 @@ final class Record {
             Object problems = row.get("problems");
             return row.get("reason") + (problems instanceof List<?> l && !l.isEmpty() ? ": " + String.join("; ", l.stream().map(String::valueOf).toList()) : "");
         }
-        return row.get("overBudget") != null ? "opened " + row.get("overBudget") + " files outside the packet (budget " + Packet.EXTRA_FILES_PER_PLACE + ")" : "";
+        List<String> notes = new ArrayList<>();
+        if (row.get("downgraded") != null) {
+            notes.add(row.get("draftVerdict") + " recorded as " + row.get("verdict") + ": " + row.get("downgraded"));
+        }
+        if (row.get("overBudget") != null) {
+            notes.add("opened " + row.get("overBudget") + " files (budget " + Packet.EXTRA_FILES_PER_PLACE + ")");
+        }
+        return String.join("; ", notes);
     }
 
     private static String normal(String s) {
         return s.strip().toLowerCase(Locale.ROOT);
+    }
+
+    /** The draft's {@code remaining}, or null when it says nothing is left. */
+    static String remaining(Map<String, Object> d) {
+        if (!(d.get("remaining") instanceof String s)) {
+            return null;
+        }
+        String t = s.strip();
+        return NOTHING_LEFT.contains(normal(t).replaceAll("[.!]+$", "")) ? null : t;
     }
 
     /**

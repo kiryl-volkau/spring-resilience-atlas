@@ -32,6 +32,10 @@ The same jar prints the bundled references, so nothing outside this project has 
 
 1. **Resolve the start.** Find it with `entrypoints` (by id, `--target`, `--class`, `--subkind`
    or `--tag webhook`), then `record <EP-id>`.
+   - No start given (nothing after "starts at:" above): run `places --limit 5`. Take the
+     first row whose `verdict` is not `REFUTED` or `MITIGATED`, and trace its `first`
+     operation. Say in your reply which place you started from, and list the other rows as
+     candidates for the next run.
    - Several matches: pick the one the request most plausibly means, and list the others in
      `openQuestions`.
    - No match: stop and say so.

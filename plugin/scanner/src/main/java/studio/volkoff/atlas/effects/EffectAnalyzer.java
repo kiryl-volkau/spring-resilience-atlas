@@ -116,6 +116,13 @@ public final class EffectAnalyzer {
     private record TxAnno(TxMode mode, String detail, int line) {
     }
 
+    /**
+     * A method on the walk's stack. {@code at} is {@code file:line} of its declaration; {@code owner}
+     * is the frame that opened the transaction it runs in, null outside one.
+     */
+    private record Frame(String symbol, String at, Frame owner) {
+    }
+
     /** A field's declared type and the type that declares it, whose file resolves the type name. */
     private record FieldRef(TypeDecl owner, String type) {
     }
@@ -217,6 +224,8 @@ public final class EffectAnalyzer {
         private final Map<MethodDecl, Map<String, Integer>> visits = new IdentityHashMap<>();
         private final Map<MethodDecl, Map<String, Deferral>> deferrals = new IdentityHashMap<>();
         private final Set<String> files = new LinkedHashSet<>();
+        /** The methods being read, innermost first. */
+        private final Deque<Frame> frames = new ArrayDeque<>();
         private int methods;
         private boolean truncated;
         private int unresolved;
@@ -231,19 +240,28 @@ public final class EffectAnalyzer {
             return new Result(true, effects, methods, new ArrayList<>(files), truncated, budgetHit, unresolved, beyondReach, entryReturns);
         }
 
-        /** A second sighting of the same effect keeps the lowest hop and the strongest transaction, whatever the walk order. */
+        /**
+         * A second sighting of the same effect keeps the lowest hop and the strongest transaction, whatever the walk order,
+         * and the owner of the transaction it was first seen in at that strength.
+         */
         void add(String signal, String detail, String file, int line, String symbol, int hop, Tx tx) {
             String key = signal + "|" + file + "|" + line + "|" + detail;
+            Frame f = frames.peek();
+            // A site in a TransactionTemplate callback of a method without its own transaction: that method is the boundary.
+            Frame owner = tx == Tx.NONE || f == null ? null : f.owner() != null ? f.owner() : f;
+            String ownerSymbol = owner == null ? null : owner.symbol();
+            String ownerAt = owner == null ? null : owner.at();
             Integer at = seen.get(key);
             if (at == null) {
                 seen.put(key, effects.size());
-                effects.add(new Effect(signal, detail, file, line, symbol, hop, tx == Tx.READ_WRITE, tx == Tx.READ_ONLY));
+                effects.add(new Effect(signal, detail, file, line, symbol, hop, tx == Tx.READ_WRITE, tx == Tx.READ_ONLY, ownerSymbol, ownerAt));
                 return;
             }
             Effect old = effects.get(at);
             boolean rw = old.inTx() || tx == Tx.READ_WRITE;
+            boolean takeNew = old.txOwner() == null || !old.inTx() && tx == Tx.READ_WRITE;
             effects.set(at, new Effect(signal, detail, file, line, old.symbol(), Math.min(old.hop(), hop), rw,
-                    !rw && (old.inReadOnlyTx() || tx == Tx.READ_ONLY)));
+                    !rw && (old.inReadOnlyTx() || tx == Tx.READ_ONLY), takeNew ? ownerSymbol : old.txOwner(), takeNew ? ownerAt : old.txOwnerAt()));
         }
 
         /**
@@ -269,18 +287,39 @@ public final class EffectAnalyzer {
             files.add(file);
             String symbol = t.symbol();
             Tx inner = tx;
-            if (viaProxy) {
-                TxAnno declared = transactional(t);
-                if (declared != null) {
-                    switch (declared.mode()) {
-                        case OPENS -> {
-                            inner = Tx.READ_WRITE;
-                            add(Signals.TX, declared.detail(), file, declared.line(), symbol, hop, inner);
-                        }
-                        case READ_ONLY -> inner = tx == Tx.NONE ? Tx.READ_ONLY : tx;
-                        case SUSPENDS -> inner = Tx.NONE;
-                        case JOINS -> { }
+            boolean opensHere = false;
+            TxAnno declared = viaProxy ? transactional(t) : null;
+            if (declared != null) {
+                switch (declared.mode()) {
+                    case OPENS -> {
+                        inner = Tx.READ_WRITE;
+                        opensHere = tx != Tx.READ_WRITE || declared.detail().contains("REQUIRES_NEW");
                     }
+                    case READ_ONLY -> {
+                        inner = tx == Tx.NONE ? Tx.READ_ONLY : tx;
+                        opensHere = tx == Tx.NONE;
+                    }
+                    case SUSPENDS -> inner = Tx.NONE;
+                    case JOINS -> { }
+                }
+            }
+            Frame parent = frames.peek();
+            Frame self = new Frame(symbol, file + ":" + t.method().line(), null);
+            Frame owner = inner == Tx.NONE ? null
+                    : opensHere || parent == null ? self
+                    : parent.owner() != null ? parent.owner() : parent;
+            frames.push(new Frame(self.symbol(), self.at(), owner));
+            try {
+                body(bean, t, hop, inner, declared, viaProxy, shared, file, symbol);
+            } finally {
+                frames.pop();
+            }
+        }
+
+        private void body(TypeDecl bean, Target t, int hop, Tx inner, TxAnno declared, boolean viaProxy, boolean shared, String file, String symbol) {
+            if (viaProxy) {
+                if (declared != null && declared.mode() == TxMode.OPENS) {
+                    add(Signals.TX, declared.detail(), file, declared.line(), symbol, hop, inner);
                 }
                 for (Anno a : t.method().annos()) {
                     switch (a.simpleName()) {

@@ -112,6 +112,8 @@ public final class Risk {
                 "Plain @EventListener methods run before the commit. If the transaction rolls back, they have already acted on data that does not exist.");
         rule("read-verb-writes", "Read-only HTTP verb changes data",
                 "GET and HEAD are retried and prefetched freely by clients and proxies. A write here repeats on every retry.");
+        rule(Places.NO_HINT, "No pattern matched",
+                "The operation writes, sends, calls out or opens a transaction, but no rule fired. Not a hint: the quick check can sweep it for a failure the rules missed.");
     }
 
     private static final Set<String> REQUEST_KINDS = Set.of("HTTP", "SOAP", "GRPC", "GRAPHQL", "WEBSOCKET", "ROUTER", "ACTUATOR", "PORTLET");

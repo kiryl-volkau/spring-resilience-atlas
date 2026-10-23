@@ -163,15 +163,23 @@ is a funnel:
 
 1. **Hints, no model.** The scan and `Risk.java` flag operations, as above.
 2. **Places, no model.** Operations that share the code a fix would change are grouped into one
-   place: a rule code at the method enclosing its evidence. A large application has far fewer
-   places than operations.
+   place: a rule code at the method enclosing its evidence, or, for a rule about a transaction,
+   at the method that opens the transaction, since that boundary is what a fix moves. A large
+   application has far fewer places than operations.
 3. **Quick check, cheap model.** The scanner writes an evidence packet per batch of up to eight
    places: the rule's hypothesis, its named mitigations, the effects it cited and the methods
    around them. A `place-checker` agent (Haiku by default) answers CONFIRMED, REFUTED, MITIGATED
    or UNCERTAIN per place, with evidence that the scanner verifies line by line before it stores
-   the verdict.
+   the verdict. A mitigation that covers only part of the failure is PARTIAL and leaves the place
+   CONFIRMED; a MITIGATED or REFUTED answer that names a failure still possible is stored as
+   CONFIRMED or UNCERTAIN.
 4. **Deep audit, strong model** (next): the confirmed high places and the ones a user picks,
    traced in full and checked by a verifier that tries to disprove each finding.
+
+High and medium hints are checked by default. `--level LOW` adds the low ones, and `--level
+NONE` sweeps the operations that write, send or call out without any rule firing, asking the
+model whether a rule missed something. Operations whose path changes nothing get no question;
+the report says so for each of them.
 
 The first call only plans: it prints the places, the estimated tokens and dollars, the cap and
 the command that runs exactly that plan, and spends nothing. A run counts each batch as spent

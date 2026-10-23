@@ -1,6 +1,7 @@
 package studio.volkoff.atlas;
 
 import studio.volkoff.atlas.audit.Audit;
+import studio.volkoff.atlas.audit.PlaceList;
 import studio.volkoff.atlas.query.Args;
 import studio.volkoff.atlas.query.AtlasStore;
 import studio.volkoff.atlas.query.EvidenceVerifier;
@@ -39,8 +40,10 @@ public final class Main {
               domains                      domains from domains.jsonl with entry-point counts
               verify-evidence <file>       check {file,line,snippet} evidence in a flow or finding document; exit 1 on any problem
               doc <name>                   print a bundled reference: atlas-cli.md, entrypoint-rules.md, *.schema.json
+              places [--limit N] [--level HIGH,MEDIUM] [--rule CODE]
+                                           the report's places in fix-first order, with any quick-check verdict
               audit plan [filters]         plan the quick check of the report's places; prints the estimate, spends nothing
-                  --places PL-a,PL-b  --ops EP-a  --rule CODE  --level HIGH,MEDIUM  any entrypoints filter
+                  --places PL-a,PL-b  --ops EP-a  --rule CODE  --level HIGH,MEDIUM,LOW,NONE  any entrypoints filter
                   --model haiku|sonnet|opus|fable  --batch N (8)  --max-usd X  --waves N (12)  --include-current  --audit DIR
               audit next <plan-id> [--batches N]   issue the next packets of that plan, or say why it stopped
               audit record <batch-id>      store the checker's draft for a batch as verdicts; rebuilds the derived files
@@ -76,8 +79,8 @@ public final class Main {
                         out.println(open(outFile));
                     }
                 }
-                case "audit" -> out.print(Audit.run(repo, atlasDir, args.get("audit") != null ? Path.of(args.get("audit")).toAbsolutePath().normalize()
-                        : repo.resolve(".reliability").resolve("audit"), args));
+                case "audit" -> out.print(Audit.run(repo, atlasDir, auditDir(args, repo), args));
+                case "places" -> out.print(PlaceList.run(repo, atlasDir, auditDir(args, repo), args));
                 case "doc" -> out.print(doc(args.positional.isEmpty() ? null : args.positional.get(0)));
                 case "verify-evidence" -> {
                     if (args.positional.isEmpty()) {
@@ -98,6 +101,10 @@ public final class Main {
             err.println("error: " + e);
             System.exit(1);
         }
+    }
+
+    private static Path auditDir(Args args, Path repo) {
+        return args.get("audit") != null ? Path.of(args.get("audit")).toAbsolutePath().normalize() : repo.resolve(".reliability").resolve("audit");
     }
 
     private static final List<String> DOCS = List.of("atlas-cli.md", "not-in-atlas.md", "entrypoint-rules.md", "entrypoint.schema.json",
@@ -142,7 +149,7 @@ public final class Main {
                 Object reasons = op.get("reasons");
                 String first = reasons instanceof List<?> r && !r.isEmpty() && r.get(0) instanceof Map<?, ?> m ? String.valueOf(m.get("title")) : "";
                 out.append(i++).append('\t').append(op.get("level")).append('\t').append(op.get("id")).append('\t')
-                        .append(op.get("kind")).append(' ').append(op.get("subkind")).append('\t').append(op.get("target"))
+                        .append(op.get("kind")).append(' ').append(op.get("subkind")).append('\t').append(Query.target(op))
                         .append('\t').append(op.get("cls")).append('.').append(op.get("method")).append('\t').append(first).append('\n');
             }
         }

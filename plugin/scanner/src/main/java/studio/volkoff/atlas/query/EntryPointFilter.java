@@ -25,6 +25,7 @@ public record EntryPointFilter(Predicate<Map<String, Object>> predicate, Map<Str
         for (Map<String, Object> r : atlas.entrypoints()) {
             Map<String, Object> row = new LinkedHashMap<>(r);
             row.put("symbol", Query.symbol(str(r, "cls"), str(r, "method")));
+            row.put("params", Query.conditions(r));
             row.put("loc", str(r, "file") + ":" + r.get("line"));
             if (hasDomains) {
                 String d = atlas.domainOf(str(r, "cls"));

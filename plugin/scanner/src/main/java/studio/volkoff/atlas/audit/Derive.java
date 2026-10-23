@@ -4,6 +4,7 @@ import studio.volkoff.atlas.json.Json;
 import studio.volkoff.atlas.query.Query;
 import studio.volkoff.atlas.report.Places;
 import studio.volkoff.atlas.report.ReportBuilder;
+import studio.volkoff.atlas.report.Risk;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,6 +52,13 @@ public final class Derive {
             cores.put(id, Fingerprint.core(ctx, Packet.view(ctx, ctx.placeById.get(id))));
         }
         Map<String, AuditStore.Resolved> resolved = AuditStore.resolve(rows, cores, ctx.repo);
+        // HIGH and MEDIUM places always count; a LOW or no-hint place counts once someone chose to check it.
+        Set<String> counted = new LinkedHashSet<>();
+        for (Places.Place p : ctx.places.places()) {
+            if (p.defaultScope() || resolved.containsKey(p.id())) {
+                counted.add(p.id());
+            }
+        }
 
         List<Map<String, Object>> placeRows = new ArrayList<>();
         for (Places.Place p : ctx.places.places()) {
@@ -72,8 +80,10 @@ public final class Derive {
             if (r.status().equals("UNJUDGED")) {
                 m.put("reason", r.row().get("reason"));
             }
-            if (r.row().get("needs") != null) {
-                m.put("needs", r.row().get("needs"));
+            for (String k : List.of("needs", "remaining", "foundRule", "draftVerdict", "downgraded")) {
+                if (r.row().get(k) != null) {
+                    m.put(k, r.row().get(k));
+                }
             }
             m.put("batch", r.row().get("batch"));
             m.put("model", r.row().get("model"));
@@ -95,11 +105,13 @@ public final class Derive {
         int covered = 0;
         int withHint = 0;
         for (Places.Input in : ctx.inputs) {
-            List<String> ids = ctx.placeIdsOf(in.id());
+            if (ctx.placeIdsOf(in.id()).stream().anyMatch(id -> ctx.placeById.get(id).defaultScope())) {
+                withHint++;
+            }
+            List<String> ids = ctx.placeIdsOf(in.id()).stream().filter(counted::contains).toList();
             if (ids.isEmpty()) {
                 continue;
             }
-            withHint++;
             List<AuditStore.Resolved> judged = new ArrayList<>();
             boolean stale = false;
             int current = 0;
@@ -142,7 +154,7 @@ public final class Derive {
                 summary = String.valueOf(worst.row().get("summary"));
             } else if (judged.stream().anyMatch(r -> "UNCERTAIN".equals(r.verdict()))) {
                 colour = "GREY";
-                Object needs = worst.row().get("needs") instanceof Map<?, ?> n ? n.get("what") : null;
+                Object needs = openQuestion(worst.row());
                 summary = "uncertain" + (needs != null ? ": needs " + needs : "") + "; " + worst.row().get("summary");
             } else {
                 colour = "GREEN";
@@ -165,33 +177,83 @@ public final class Derive {
         store.writeJsonl("verdicts.jsonl", verdicts);
 
         Map<String, Object> plan = store.plan();
-        store.write(store.dir.resolve("coverage.json"), Json.write(coverage(ctx, store, resolved, retired, plan, withHint, covered)) + "\n");
-        writeBacklog(ctx, store, resolved);
+        store.write(store.dir.resolve("coverage.json"), Json.write(coverage(ctx, store, resolved, retired, counted, plan, withHint, covered)) + "\n");
+        writeBacklog(ctx, store, resolved, counted);
+    }
+
+    /** What an uncertain verdict waits for: its {@code needs}, else what its check could not rule out. */
+    private static Object openQuestion(Map<String, Object> row) {
+        Object needs = row.get("needs") instanceof Map<?, ?> n ? n.get("what") : null;
+        return needs != null ? needs : row.get("remaining");
+    }
+
+    /** Operations without a hint by what their path shows: nothing that changes state, only their own database, or more. */
+    static Map<String, Integer> unhinted(AuditContext ctx) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        out.put("readOnly", 0);
+        out.put("ownDatabase", 0);
+        out.put("other", 0);
+        for (Places.Input in : ctx.inputs) {
+            Map<String, Object> fx = ctx.effectRowById.get(in.id());
+            if (fx == null || !Boolean.TRUE.equals(fx.get("analysed")) || !in.assessment().reasons().isEmpty()) {
+                continue;
+            }
+            Set<String> signals = Places.stateSignals(in.effects());
+            String bucket = signals.isEmpty() ? "readOnly" : signals.equals(Set.of("db-write")) ? "ownDatabase" : "other";
+            out.merge(bucket, 1, Integer::sum);
+        }
+        return out;
     }
 
     private static Map<String, Object> coverage(AuditContext ctx, AuditStore store, Map<String, AuditStore.Resolved> resolved,
-                                                Set<String> retired, Map<String, Object> plan, int withHint, int covered) throws Exception {
+                                                Set<String> retired, Set<String> counted, Map<String, Object> plan, int withHint,
+                                                int covered) throws Exception {
         Map<String, Integer> places = new LinkedHashMap<>();
-        for (String k : List.of("inScope", "judged", "confirmed", "refuted", "mitigated", "uncertain", "unjudged", "stale", "retired")) {
+        for (String k : List.of("inScope", "judged", "confirmed", "refuted", "mitigated", "uncertain", "unjudged", "stale", "retired",
+                "downgraded", "overBudget")) {
             places.put(k, 0);
         }
-        places.put("inScope", ctx.places.places().size());
+        places.put("inScope", counted.size());
         places.put("retired", retired.size());
         for (AuditStore.Resolved r : resolved.values()) {
             switch (r.status()) {
                 case "CURRENT" -> {
                     places.merge("judged", 1, Integer::sum);
                     places.merge(r.verdict().toLowerCase(java.util.Locale.ROOT), 1, Integer::sum);
+                    if (r.row().get("downgraded") != null) {
+                        places.merge("downgraded", 1, Integer::sum);
+                    }
+                    if (r.row().get("overBudget") != null) {
+                        places.merge("overBudget", 1, Integer::sum);
+                    }
                 }
                 case "STALE" -> places.merge("stale", 1, Integer::sum);
                 default -> places.merge("unjudged", 1, Integer::sum);
             }
         }
         int notAnalysed = 0;
+        int lowOnly = 0;
+        int lowUnchecked = 0;
+        int sweepable = 0;
+        int sweepUnchecked = 0;
         for (Places.Input in : ctx.inputs) {
             Map<String, Object> fx = ctx.effectRowById.get(in.id());
             if (fx == null || !Boolean.TRUE.equals(fx.get("analysed"))) {
                 notAnalysed++;
+                continue;
+            }
+            List<Places.Place> mine = ctx.placeIdsOf(in.id()).stream().map(ctx.placeById::get).toList();
+            if (mine.isEmpty() || mine.stream().anyMatch(Places.Place::defaultScope)) {
+                continue;
+            }
+            boolean sweep = mine.stream().anyMatch(p -> p.code().equals(Places.NO_HINT));
+            boolean unchecked = mine.stream().anyMatch(p -> !counted.contains(p.id()));
+            if (sweep) {
+                sweepable++;
+                sweepUnchecked += unchecked ? 1 : 0;
+            } else {
+                lowOnly++;
+                lowUnchecked += unchecked ? 1 : 0;
             }
         }
         Map<String, Object> c = new LinkedHashMap<>();
@@ -224,6 +286,8 @@ public final class Derive {
         ops.put("notAnalysed", notAnalysed);
         ops.put("withHint", withHint);
         ops.put("covered", covered);
+        ops.put("lowOnly", lowOnly);
+        ops.put("noHint", unhinted(ctx));
         c.put("operations", ops);
 
         Map<String, Map<String, Object>> estimates = new LinkedHashMap<>();
@@ -273,8 +337,14 @@ public final class Derive {
         if (ctx.atlas.manifest.get("warnings") instanceof List<?> w) {
             w.forEach(x -> limits.add(String.valueOf(x)));
         }
-        limits.add("LOW hints are not in scope of the quick check");
-        limits.add((ctx.inputs.size() - withHint) + " operations without a HIGH or MEDIUM hint were not checked");
+        Map<String, Integer> noHint = unhinted(ctx);
+        if (lowUnchecked > 0) {
+            limits.add(lowUnchecked + " of " + lowOnly + " operations with only LOW hints were not checked (--level LOW adds them)");
+        }
+        if (sweepUnchecked > 0) {
+            limits.add(sweepUnchecked + " of " + sweepable + " operations without a hint that still write, send or call were not swept (--level NONE adds them)");
+        }
+        limits.add(noHint.get("readOnly") + " operations without a hint change nothing on the path the scan read; the quick check has nothing to ask about them");
         limits.add(notAnalysed + " operations not analysed: Kotlin, Groovy or unparsed code, not checkable by the quick check");
         c.put("limits", limits);
         return c;
@@ -292,7 +362,8 @@ public final class Derive {
         return min;
     }
 
-    private static void writeBacklog(AuditContext ctx, AuditStore store, Map<String, AuditStore.Resolved> resolved) throws Exception {
+    private static void writeBacklog(AuditContext ctx, AuditStore store, Map<String, AuditStore.Resolved> resolved, Set<String> counted)
+            throws Exception {
         Map<String, String> areas = ReportBuilder.areas(ctx.atlas);
         Map<String, List<Places.Place>> tasksByArea = new LinkedHashMap<>();
         List<Places.Place> uncertain = new ArrayList<>();
@@ -313,13 +384,13 @@ public final class Derive {
             }
         }
         int notAnalysed = 0;
-        int noHint = 0;
+        int unchecked = 0;
         for (Places.Input in : ctx.inputs) {
             Map<String, Object> fx = ctx.effectRowById.get(in.id());
             if (fx == null || !Boolean.TRUE.equals(fx.get("analysed"))) {
                 notAnalysed++;
-            } else if (ctx.placeIdsOf(in.id()).isEmpty()) {
-                noHint++;
+            } else if (ctx.placeIdsOf(in.id()).stream().noneMatch(counted::contains)) {
+                unchecked++;
             }
         }
         int tasks = tasksByArea.values().stream().mapToInt(List::size).sum();
@@ -327,11 +398,11 @@ public final class Derive {
         StringBuilder md = new StringBuilder();
         md.append("# Reliability backlog · ").append(ctx.repo.getFileName()).append(commit == null ? "" : " @" + commit.substring(0, Math.min(7, commit.length())))
                 .append(" · ").append(LocalDate.now(ZoneOffset.UTC)).append("\n\n");
-        md.append(tasks).append(tasks == 1 ? " task" : " tasks").append(" from ").append(checked).append(" of ").append(ctx.places.places().size())
+        md.append(tasks).append(tasks == 1 ? " task" : " tasks").append(" from ").append(checked).append(" of ").append(counted.size())
                 .append(" places checked").append(model == null ? "" : " (quick check on " + model + ")").append(".\n");
-        md.append("Not covered: ").append(noHint).append(" operations without a HIGH or MEDIUM hint; ").append(notAnalysed)
-                .append(" operations not analysed (Kotlin, Groovy, unparsed); places not checked yet: ")
-                .append(ctx.places.places().size() - checked).append(".\n");
+        md.append("Not covered: ").append(unchecked).append(" operations with no checked place (LOW hints and operations without a hint are checked only on request); ")
+                .append(notAnalysed).append(" operations not analysed (Kotlin, Groovy, unparsed); places not checked yet: ")
+                .append(counted.size() - checked).append(".\n");
         md.append("Severity says how bad it is if true; confidence says how sure the check is. SUSPECTED means the quick check found the pattern and no mitigation; a deep audit has not verified it.\n");
         int rank = 1;
         for (Map.Entry<String, List<Places.Place>> area : tasksByArea.entrySet()) {
@@ -344,7 +415,7 @@ public final class Derive {
             md.append("\n## Needs a closer look\n\n");
             for (Places.Place p : uncertain) {
                 Map<String, Object> row = resolved.get(p.id()).row();
-                Object needs = row.get("needs") instanceof Map<?, ?> n ? n.get("what") : null;
+                Object needs = openQuestion(row);
                 md.append("- ").append(p.id()).append(" · ").append(p.title()).append(" at `").append(p.symbol()).append("`: ")
                         .append(row.get("summary")).append(needs != null ? " Needs: " + needs + "." : "").append('\n');
             }
@@ -361,17 +432,24 @@ public final class Derive {
     }
 
     private static String task(AuditContext ctx, Places.Place p, Map<String, Object> row, int rank) {
-        Hypotheses.Hypothesis h = ctx.hypotheses.get(p.code());
+        // A sweep that found something is filed under the rule it named.
+        String code = p.code().equals(Places.NO_HINT) && ctx.hypotheses.containsKey(String.valueOf(row.get("foundRule"))) ? String.valueOf(row.get("foundRule")) : p.code();
+        Hypotheses.Hypothesis h = ctx.hypotheses.get(code);
+        String title = Risk.RULES.get(code)[0];
         StringBuilder t = new StringBuilder();
-        t.append("### ").append(rank).append(" · ").append(p.id()).append(" · ").append(p.title()).append('\n');
-        t.append("rule `").append(p.code()).append("` · severity ").append(p.level()).append(" · confidence ").append(row.get("confidence"))
-                .append(" · status SUSPECTED\n");
-        t.append("Place: `").append(p.symbol()).append("` in ").append(p.file()).append('\n');
+        t.append("### ").append(rank).append(" · ").append(p.id()).append(" · ").append(title).append('\n');
+        t.append("rule `").append(code).append('`').append(code.equals(p.code()) ? "" : " (found by a sweep; no rule fired)")
+                .append(" · severity ").append(p.level() == Risk.Level.NONE ? "unrated" : p.level())
+                .append(" · confidence ").append(row.get("confidence")).append(" · status SUSPECTED\n");
+        if (row.get("downgraded") != null) {
+            t.append("Recorded as suspected although the check said ").append(row.get("draftVerdict")).append(": ").append(row.get("downgraded")).append('\n');
+        }
+        t.append(Places.TX_RULES.contains(p.code()) ? "Transaction opened in: `" : "Place: `").append(p.symbol()).append("` in ").append(p.file()).append('\n');
         t.append("Reached from ").append(p.ops().size()).append(p.ops().size() == 1 ? " operation: " : " operations: ");
         List<String> ops = new ArrayList<>();
         for (String op : p.ops().subList(0, Math.min(5, p.ops().size()))) {
             Map<String, Object> ep = ctx.inputById.get(op).ep();
-            ops.add("`" + ep.get("subkind") + " " + ep.get("target") + "` (" + Query.symbol(String.valueOf(ep.get("cls")), String.valueOf(ep.get("method"))) + ")");
+            ops.add("`" + ep.get("subkind") + " " + Query.target(ep) + "` (" + Query.symbol(String.valueOf(ep.get("cls")), String.valueOf(ep.get("method"))) + ")");
         }
         t.append(String.join(", ", ops)).append(p.ops().size() > 5 ? ", +" + (p.ops().size() - 5) + " more" : "").append('\n');
         if (row.get("evidence") instanceof List<?> ev && !ev.isEmpty()) {
@@ -390,12 +468,17 @@ public final class Derive {
         if (row.get("mitigationsChecked") instanceof List<?> mc) {
             for (Object o : mc) {
                 Map<?, ?> m = (Map<?, ?>) o;
-                (("FOUND".equals(m.get("result"))) ? found : notFound).add(m.get("name") + " — " + m.get("result"));
+                String result = String.valueOf(m.get("result"));
+                (result.equals("FOUND") || result.equals("PARTIAL") ? found : notFound)
+                        .add(m.get("name") + " — " + result + (result.equals("PARTIAL") && m.get("where") != null ? " (" + m.get("where") + ")" : ""));
             }
         }
         t.append("Existing mitigations: ").append(found.isEmpty() ? "none found" : String.join("; ", found))
                 .append(notFound.isEmpty() ? "" : " (" + String.join("; ", notFound) + ")").append('\n');
         t.append("Failure: ").append(row.get("summary")).append('\n');
+        if (row.get("remaining") != null) {
+            t.append("Still open: ").append(row.get("remaining")).append('\n');
+        }
         t.append("Fix: ").append(h.fix()).append('\n');
         t.append("Verify: ").append(h.verify()).append('\n');
         return t.toString();

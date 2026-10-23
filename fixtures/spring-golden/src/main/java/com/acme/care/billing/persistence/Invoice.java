@@ -60,6 +60,18 @@ public class Invoice {
         return id;
     }
 
+    public String getProviderCustomerId() {
+        return providerCustomerId;
+    }
+
+    public long getAmountMinor() {
+        return amountMinor;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
     public Status getStatus() {
         return status;
     }

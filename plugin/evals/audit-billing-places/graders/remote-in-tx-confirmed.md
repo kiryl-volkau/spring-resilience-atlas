@@ -1,6 +1,6 @@
 ---
 type: regex
-pattern: '"placeId":"PL-d03c7988"[^\n]*"verdict":"CONFIRMED"'
+pattern: '"placeId":"PL-6a66916e"[^\n]*"verdict":"CONFIRMED"'
 target:
   source: file
   path: .reliability/audit/places.jsonl

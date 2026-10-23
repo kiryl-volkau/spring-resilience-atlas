@@ -4,7 +4,8 @@ async-in-tx	StripeWebhookService.handle	CONFIRMED
 dual-write-in-tx	StripeWebhookService.handle	CONFIRMED
 webhook-not-idempotent	StripeWebhookService.handle	CONFIRMED
 consumer-not-idempotent	InvoiceService.createInvoiceFromProviderEvent	CONFIRMED
-remote-in-tx	PaymentProviderClient.createCharge	CONFIRMED
+remote-in-tx	InvoiceService.createInvoiceFromProviderEvent	CONFIRMED
+remote-in-tx	ChargeRetryService.retry	CONFIRMED
 dual-write-in-tx	PatternsController.txTemplate	CONFIRMED
 proxy-bypassed	ResidentNotifier.notifyResident	CONFIRMED
 shared-field-write	ResidentAccountPortlet.saveAccount	CONFIRMED

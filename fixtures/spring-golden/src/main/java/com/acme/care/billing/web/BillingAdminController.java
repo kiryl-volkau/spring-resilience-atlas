@@ -7,6 +7,7 @@ import java.util.UUID;
 import com.acme.care.billing.service.BillingAdminService;
 import com.acme.care.billing.service.BillingAdminService.InvoiceSummary;
 import com.acme.care.billing.service.BillingAdminService.Tariff;
+import com.acme.care.billing.service.ChargeRetryService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,9 +23,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class BillingAdminController {
 
     private final BillingAdminService adminService;
+    private final ChargeRetryService chargeRetryService;
 
-    public BillingAdminController(BillingAdminService adminService) {
+    public BillingAdminController(BillingAdminService adminService, ChargeRetryService chargeRetryService) {
         this.adminService = adminService;
+        this.chargeRetryService = chargeRetryService;
+    }
+
+    @PostMapping(path = "/invoices/{invoiceId}/charge", params = "action=retry")
+    public ResponseEntity<Void> retryCharge(@PathVariable UUID invoiceId) {
+        chargeRetryService.retry(invoiceId);
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping(path = "/invoices/{invoiceId}/charge", params = "action=cancel")
+    public ResponseEntity<Void> cancelCharge(@PathVariable UUID invoiceId) {
+        chargeRetryService.cancel(invoiceId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("invoices/")

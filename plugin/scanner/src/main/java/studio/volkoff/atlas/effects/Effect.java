@@ -12,9 +12,11 @@ import java.util.Map;
  * @param hop          bean boundaries crossed from the entry method: 0 is the entry bean itself
  * @param inTx         the effect happens inside a read-write transaction opened on this path
  * @param inReadOnlyTx the effect happens inside a read-only transaction, which still holds a connection
+ * @param txOwner      inside a transaction: the {@code Type.method} that opened it, the boundary a fix moves; else null
+ * @param txOwnerAt    {@code file:line} of that method's declaration; null with {@code txOwner}
  */
 public record Effect(String signal, String detail, String file, int line, String symbol, int hop, boolean inTx,
-                     boolean inReadOnlyTx) {
+                     boolean inReadOnlyTx, String txOwner, String txOwnerAt) {
 
     public Map<String, Object> toMap() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -27,6 +29,10 @@ public record Effect(String signal, String detail, String file, int line, String
         m.put("inTx", inTx);
         if (inReadOnlyTx) {
             m.put("inReadOnlyTx", true);
+        }
+        if (txOwner != null && (inTx || inReadOnlyTx)) {
+            m.put("txOwner", txOwner);
+            m.put("txOwnerAt", txOwnerAt);
         }
         return m;
     }

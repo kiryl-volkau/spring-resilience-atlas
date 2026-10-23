@@ -59,7 +59,8 @@ Shaping the output: `--group-by module|package|path|kind|subkind|status|domain`,
 In the answer:
 
 - Give each entry point as `EP-id`, the target, `Class.method` and `file:line`, so the user can
-  open it.
+  open it. When the `params` column is set, write it after the target in brackets, such as
+  `POST /orders [format=csv]`: it is what tells handlers on the same path and verb apart.
 - Call out:
   - `INFERRED` rows: derived through inheritance, programmatic wiring, Kotlin, Groovy or the
     regex fallback;

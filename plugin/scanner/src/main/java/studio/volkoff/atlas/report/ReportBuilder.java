@@ -201,9 +201,12 @@ public final class ReportBuilder {
             m.put("ops", p.ops());
             m.put("o", p.sampleOp());
             m.put("ev", p.sampleEffect());
+            if (Places.TX_RULES.contains(p.code())) {
+                m.put("boundary", true);
+            }
             Map<String, Object> v = placeVerdicts.get(p.id());
             if (v != null) {
-                for (String k : List.of("verdict", "confidence", "tier", "status", "summary", "reason")) {
+                for (String k : List.of("verdict", "confidence", "tier", "status", "summary", "reason", "foundRule", "remaining", "downgraded", "draftVerdict")) {
                     if (v.get(k) != null) {
                         m.put(k, v.get(k));
                     }

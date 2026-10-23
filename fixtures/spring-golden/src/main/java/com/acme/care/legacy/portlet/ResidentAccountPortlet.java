@@ -20,6 +20,7 @@ public class ResidentAccountPortlet extends BasePortalPortlet {
 
     @RenderMapping
     public String showAccount(RenderRequest request) {
+        request.setAttribute("lastSearch", lastSearch);
         return "account";
     }
 

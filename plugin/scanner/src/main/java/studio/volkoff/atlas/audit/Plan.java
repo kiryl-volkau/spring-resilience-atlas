@@ -165,7 +165,7 @@ final class Plan {
         for (int i = 0; i < batches.size(); i++) {
             String batchId = String.format("B-%s-%02d", id, i + 1);
             List<Packet.PlaceView> b = batches.get(i);
-            String text = Packet.render(ctx, batchId, shown(repo, store.draft(batchId)), b);
+            String text = Packet.render(ctx, batchId, shown(store.draft(batchId)), b);
             int tokens = Packet.bodyBytes(text) / 4;
             Estimate e = estimate(tokens, b.size(), pricing);
             fresh += e.freshIn();
@@ -220,12 +220,10 @@ final class Plan {
         store.writePlan(plan);
 
         out.append("id\trule\tlevel\tfile\tsymbol\tline\toperations\tprevious\n");
-        int high = 0;
+        Map<Risk.Level, Integer> byLevel = new java.util.EnumMap<>(Risk.Level.class);
         for (int i = 0; i < planned.size(); i++) {
             Places.Place p = planned.get(i);
-            if (p.level() == Risk.Level.HIGH) {
-                high++;
-            }
+            byLevel.merge(p.level(), 1, Integer::sum);
             if (i < SHOWN) {
                 out.append(p.id()).append('\t').append(p.code()).append('\t').append(p.level()).append('\t').append(p.file()).append('\t')
                         .append(p.symbol()).append('\t').append(p.line()).append('\t').append(p.ops().size()).append('\t')
@@ -237,8 +235,9 @@ final class Plan {
         }
         long orchestratorWaves = Math.min(waves, (batches.size() + DEFAULT_BATCHES_PER_WAVE - 1) / DEFAULT_BATCHES_PER_WAVE);
         double orchestrator = orchestrator(orchestratorWaves, Pricing.of("haiku")).usd();
-        out.append("# plan ").append(id).append(": ").append(planned.size()).append(" places in scope (HIGH ").append(high)
-                .append(", MEDIUM ").append(planned.size() - high).append(")");
+        List<String> levelParts = new ArrayList<>();
+        byLevel.forEach((l, n) -> levelParts.add((l == Risk.Level.NONE ? "no hint" : l.name()) + " " + n));
+        out.append("# plan ").append(id).append(": ").append(planned.size()).append(" places in scope (").append(String.join(", ", levelParts)).append(")");
         if (skippedCurrent > 0) {
             out.append("; ").append(skippedCurrent).append(" with a current verdict skipped");
         }
@@ -274,10 +273,12 @@ final class Plan {
                 throw new IllegalArgumentException("--rule " + r + " is unknown; rules: " + String.join(", ", Risk.RULES.keySet()));
             }
         }
-        Set<String> levels = csv(args.get("level", "HIGH,MEDIUM").toUpperCase(Locale.ROOT));
+        // Places or operations named one by one are checked whatever their level.
+        String defaultLevels = ids.isEmpty() && ops.isEmpty() ? "HIGH,MEDIUM" : "HIGH,MEDIUM,LOW,NONE";
+        Set<String> levels = csv(args.get("level", defaultLevels).toUpperCase(Locale.ROOT));
         for (String l : levels) {
-            if (!l.equals("HIGH") && !l.equals("MEDIUM")) {
-                throw new IllegalArgumentException("--level " + l + ": the quick check covers HIGH and MEDIUM hints only");
+            if (!Set.of("HIGH", "MEDIUM", "LOW", "NONE").contains(l)) {
+                throw new IllegalArgumentException("--level " + l + ": use HIGH, MEDIUM, LOW or NONE (operations without a hint that still write, send or call)");
             }
         }
         Set<String> matchingOps = null;
@@ -312,7 +313,10 @@ final class Plan {
         return out;
     }
 
-    /** Greedy in selection order: a new batch at {@code size} places, more than 12 packet files, or a packet body over 32k tokens. */
+    /**
+     * Greedy in selection order: a new batch at {@code size} places, more than 12 files with printed
+     * slices, or a packet body over 32k tokens.
+     */
     private static List<List<Packet.PlaceView>> batch(AuditContext ctx, List<Places.Place> planned, Map<String, Packet.PlaceView> views,
                                                      int size) throws Exception {
         List<List<Packet.PlaceView>> out = new ArrayList<>();
@@ -322,7 +326,7 @@ final class Plan {
             Packet.PlaceView v = views.get(p.id());
             if (!current.isEmpty()) {
                 Set<String> merged = new LinkedHashSet<>(files);
-                merged.addAll(v.files());
+                merged.addAll(v.printedFiles());
                 List<Packet.PlaceView> trial = new ArrayList<>(current);
                 trial.add(v);
                 boolean fits = current.size() < size && merged.size() <= MAX_BATCH_FILES
@@ -334,7 +338,7 @@ final class Plan {
                 }
             }
             current.add(v);
-            files.addAll(v.files());
+            files.addAll(v.printedFiles());
         }
         if (!current.isEmpty()) {
             out.add(current);
@@ -445,7 +449,7 @@ final class Plan {
             for (Object pid : (List<?>) b.get("places")) {
                 vs.add(views.get(String.valueOf(pid)));
             }
-            AuditStore.write(store.packet(batchId), Packet.render(ctx, batchId, shown(repo, store.draft(batchId)), vs));
+            AuditStore.write(store.packet(batchId), Packet.render(ctx, batchId, shown(store.draft(batchId)), vs));
             Files.deleteIfExists(store.draft(batchId));
             b.put("status", "ISSUED");
             b.put("issuedAt", now);
@@ -458,7 +462,7 @@ final class Plan {
         out.append(progress(plan, store, batches, first, first + take.size() - 1)).append('\n');
         for (Map<String, Object> b : take) {
             String batchId = String.valueOf(b.get("id"));
-            out.append("packet\t").append(shown(repo, store.packet(batchId))).append("\tdraft\t").append(shown(repo, store.draft(batchId)))
+            out.append("packet\t").append(shown(store.packet(batchId))).append("\tdraft\t").append(shown(store.draft(batchId)))
                     .append("\tbatch\t").append(batchId).append("\tmodel\t").append(plan.get("model")).append('\n');
         }
         return out.toString();
@@ -483,9 +487,12 @@ final class Plan {
                 + " · est. $" + money(num(plan.get("spent"))) + " of cap $" + money(num(plan.get("maxUsd")));
     }
 
-    static String shown(Path repo, Path p) {
-        Path abs = p.toAbsolutePath().normalize();
-        return (abs.startsWith(repo) ? repo.relativize(abs) : abs).toString().replace('\\', '/');
+    /**
+     * The absolute path, as the checker's Write tool needs it: given a relative one, a model has
+     * been seen to guess the project's absolute directory and write the draft elsewhere.
+     */
+    static String shown(Path p) {
+        return p.toAbsolutePath().normalize().toString();
     }
 
     private static Map<String, Object> filters(Args args) {

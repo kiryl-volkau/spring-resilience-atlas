@@ -3,14 +3,21 @@ package studio.volkoff.atlas.audit;
 import studio.volkoff.atlas.query.Query;
 import studio.volkoff.atlas.report.Places;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The evidence packet a checker reads: per place the hypothesis, its named mitigations, the
@@ -20,7 +27,8 @@ import java.util.TreeSet;
 final class Packet {
 
     /**
-     * @param evidenceSlices the methods enclosing the rule's own evidence: what the fingerprint covers
+     * @param evidenceSlices the methods enclosing the rule's own evidence, then the place's own method
+     *                       (a transaction's boundary, an operation's entry): what the fingerprint covers
      * @param entrySlices    entry methods of up to three operations, context only
      * @param otherFiles     path and hint of files on the operations' paths that are not printed
      * @param missing        evidence files that no longer exist
@@ -30,10 +38,16 @@ final class Packet {
 
         /** Files the packet prints or lists: opening them is within the packet, not extra reading. */
         Set<String> files() {
+            Set<String> out = printedFiles();
+            otherFiles.forEach(f -> out.add(f[0]));
+            return out;
+        }
+
+        /** Files with a printed slice: what a batch's file cap counts, since listed files are opened only on need. */
+        Set<String> printedFiles() {
             Set<String> out = new LinkedHashSet<>();
             evidenceSlices.forEach(s -> out.add(s.file()));
             entrySlices.forEach(s -> out.add(s.file()));
-            otherFiles.forEach(f -> out.add(f[0]));
             return out;
         }
     }
@@ -42,6 +56,8 @@ final class Packet {
     static final int MAX_OTHER_FILES = 8;
     static final int MAX_OTHER_EFFECTS = 12;
     static final int EXTRA_FILES_PER_PLACE = 2;
+    static final int MAX_STORE_FILES = 4;
+    static final int MIGRATIONS_PER_TABLE = 2;
 
     private Packet() {
     }
@@ -54,6 +70,7 @@ final class Packet {
         for (Map<String, Object> e : p.reasonEffects()) {
             toLoad.add(String.valueOf(e.get("file")));
         }
+        toLoad.add(p.file());
         for (String op : entryOps) {
             toLoad.add(String.valueOf(ctx.inputById.get(op).ep().get("file")));
         }
@@ -73,6 +90,10 @@ final class Packet {
                 evidence.add(s);
             }
         }
+        Slices.Slice own = p.line() > 0 ? ctx.slices.enclosing(p.file(), p.line()) : null;
+        if (own != null && labels.add(own.label())) {
+            evidence.add(own);
+        }
         List<Slices.Slice> entries = new ArrayList<>();
         for (String op : entryOps) {
             Map<String, Object> ep = ctx.inputById.get(op).ep();
@@ -85,6 +106,7 @@ final class Packet {
         evidence.forEach(s -> sliced.add(s.file()));
         entries.forEach(s -> sliced.add(s.file()));
         Map<String, String> other = new LinkedHashMap<>();
+        stores(ctx, p, sliced, other);
         for (String op : p.ops()) {
             Map<String, Object> row = ctx.effectRowById.get(op);
             if (row == null || !(row.get("files") instanceof List<?> files)) {
@@ -100,6 +122,70 @@ final class Packet {
         List<String[]> otherFiles = new ArrayList<>();
         other.forEach((f, h) -> otherFiles.add(new String[] {f, h}));
         return new PlaceView(p, evidence, entries, otherFiles, missing);
+    }
+
+    /**
+     * The repositories the place's operations write through, and their entities by the Spring Data
+     * naming convention ({@code OrderRepository} stores {@code Order}): where a unique constraint
+     * or a conditional query that refutes a duplicate would be. They are never on the call path,
+     * so without this a checker could not look.
+     */
+    private static void stores(AuditContext ctx, Places.Place p, Set<String> sliced, Map<String, String> other) throws Exception {
+        Set<String> repositories = new LinkedHashSet<>();
+        for (String op : p.ops()) {
+            for (Map<String, Object> e : ctx.inputById.get(op).effects()) {
+                String signal = String.valueOf(e.get("signal"));
+                String detail = String.valueOf(e.get("detail")).replaceFirst("^outbox ", "");
+                int dot = detail.indexOf('.');
+                if ((signal.equals("db-write") || signal.equals("idempotency-check")) && dot > 0 && !detail.contains(" ")) {
+                    repositories.add(detail.substring(0, dot));
+                }
+            }
+        }
+        int added = 0;
+        for (String repo : repositories) {
+            if (added >= MAX_STORE_FILES) {
+                break;
+            }
+            for (Map<String, Object> t : ctx.types(repo)) {
+                String file = String.valueOf(t.get("file"));
+                if (!sliced.contains(file) && other.putIfAbsent(file, "repository " + repo + ": its queries") == null) {
+                    added++;
+                }
+            }
+            String entity = repo.replaceFirst("(Repository|Repo|Dao)$", "");
+            if (entity.equals(repo)) {
+                continue;
+            }
+            for (Map<String, Object> t : ctx.types(entity)) {
+                String file = String.valueOf(t.get("file"));
+                if (!sliced.contains(file) && other.putIfAbsent(file, "entity " + entity + " of " + repo + ": its constraints") == null) {
+                    added++;
+                }
+                String table = table(ctx.repo.resolve(file), entity);
+                Pattern word = Pattern.compile("\\b" + Pattern.quote(table) + "\\b");
+                ctx.migrations().entrySet().stream()
+                        .filter(m -> word.matcher(m.getValue()).find())
+                        .sorted(Comparator.comparing((Map.Entry<String, String> m) -> !m.getValue().contains("unique")).thenComparing(Map.Entry::getKey))
+                        .limit(MIGRATIONS_PER_TABLE)
+                        .forEach(m -> other.putIfAbsent(m.getKey(), "migration naming table " + table + ": its indexes"));
+            }
+        }
+    }
+
+    private static final Pattern TABLE = Pattern.compile("@(?:Table|Document)\\s*\\(\\s*(?:(?:name|collection|value)\\s*=\\s*)?\"([^\"]+)\"");
+
+    /** The entity's table from {@code @Table} or {@code @Document}, else Hibernate's default naming, lower case. */
+    private static String table(Path entityFile, String entity) {
+        try {
+            Matcher m = TABLE.matcher(new String(Files.readAllBytes(entityFile), StandardCharsets.ISO_8859_1));
+            if (m.find()) {
+                return m.group(1).toLowerCase(Locale.ROOT);
+            }
+        } catch (IOException | RuntimeException e) {
+            // An unreadable entity falls back to the default name.
+        }
+        return entity.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
     }
 
     /** What points at the file: the first effect of the place's operations located there. */
@@ -126,12 +212,12 @@ final class Packet {
         body.append(DRAFT_FORMAT);
         int tokens = bodyBytes(body.toString()) / 4;
         return "# packet " + batchId + " · " + views.size() + " places · " + files.size() + " files · ~" + Math.round(tokens / 100.0) / 10.0 + "k tokens\n"
-                + "# rules: read at most " + EXTRA_FILES_PER_PLACE + " files per place beyond those printed or listed below; never search the tree; never modify any file except your draft\n"
+                + "# rules: open at most " + EXTRA_FILES_PER_PLACE + " files per place, files with printed slices included, and only files this packet names; never search the tree; never modify any file except your draft\n"
                 + "# write your draft to " + draftPath + " (one JSON object per line; format at the end)\n\n"
                 + body;
     }
 
-    private static String section(AuditContext ctx, PlaceView v, Map<String, String> printed, Set<String> declares) {
+    private static String section(AuditContext ctx, PlaceView v, Map<String, String> printed, Set<String> declares) throws IOException {
         Places.Place p = v.place();
         Hypotheses.Hypothesis h = ctx.hypotheses.get(p.code());
         StringBuilder out = new StringBuilder();
@@ -152,12 +238,22 @@ final class Packet {
             out.append("mitigated when: ").append(String.join("; ", mitigates)).append('\n');
         }
         out.append("cite: ").append(h.cite()).append('\n');
-        out.append("mitigation names to use in mitigationsChecked, exactly: ").append(String.join(" · ", names)).append("\n\n");
+        if (!names.isEmpty()) {
+            out.append("mitigation names to use in mitigationsChecked, exactly: ").append(String.join(" · ", names)).append('\n');
+        }
+        if (Places.TX_RULES.contains(p.code())) {
+            out.append("transaction boundary: ").append(p.symbol()).append(" (").append(p.file()).append(':').append(p.line())
+                    .append(") opens the transaction the evidence runs in; its slice is printed below\n");
+        }
+        if (p.code().equals(Places.NO_HINT)) {
+            out.append("rule codes for \"foundRule\" when CONFIRMED: ").append(String.join(" · ", ruleCodes(ctx))).append('\n');
+        }
+        out.append('\n');
 
         out.append("operations (").append(p.ops().size()).append("):");
         for (String op : p.ops()) {
             Map<String, Object> ep = ctx.inputById.get(op).ep();
-            out.append("\n  ").append(op).append(' ').append(ep.get("kind")).append(' ').append(ep.get("subkind")).append(' ').append(ep.get("target"))
+            out.append("\n  ").append(op).append(' ').append(ep.get("kind")).append(' ').append(ep.get("subkind")).append(' ').append(Query.target(ep))
                     .append(' ').append(Query.symbol(String.valueOf(ep.get("cls")), String.valueOf(ep.get("method"))));
             if (ep.get("attrs") instanceof Map<?, ?> a && a.get("webhook") instanceof Map<?, ?> w && "WEBHOOK".equals(w.get("verdict"))) {
                 out.append(" [webhook]");
@@ -175,6 +271,9 @@ final class Packet {
                 sig.add(d + "=" + (declares.contains(d) ? "yes" : "no"));
             }
             out.append("project build declares: ").append(String.join(", ", sig)).append('\n');
+        }
+        if (v.otherFiles().stream().anyMatch(f -> f[1].startsWith("entity ")) && ctx.migrations().isEmpty()) {
+            out.append("schema: the repository has no Flyway or Liquibase migrations; the entities are the only schema the code shows\n");
         }
 
         out.append("\nthe rule's own evidence:\n");
@@ -238,6 +337,17 @@ final class Packet {
         return out.toString();
     }
 
+    /** Codes a sweep may name: every in-scope rule but the sweep's own. */
+    static List<String> ruleCodes(AuditContext ctx) {
+        List<String> out = new ArrayList<>();
+        ctx.hypotheses.forEach((code, h) -> {
+            if (h.inScope() && !code.equals(Places.NO_HINT)) {
+                out.add(code);
+            }
+        });
+        return out;
+    }
+
     private static String effectLine(Map<String, Object> e) {
         StringBuilder s = new StringBuilder();
         s.append(e.get("signal")).append("  ").append(e.get("file")).append(':').append(e.get("line")).append("  ").append(e.get("symbol"));
@@ -268,10 +378,14 @@ final class Packet {
     private static final String DRAFT_FORMAT = """
             ## draft format
             Write the draft file named at the top of this packet: one JSON object per line, one line per place above, nothing else.
-            {"placeId":"PL-…","verdict":"CONFIRMED|REFUTED|MITIGATED|UNCERTAIN","confidence":"HIGH|MEDIUM|LOW","summary":"one or two sentences on what happens and why","evidence":[{"file":"path as printed","line":123,"snippet":"code copied verbatim from that line","claim":"what this line shows"}],"mitigationsChecked":[{"name":"<exact name from the place's list>","result":"FOUND|NOT_FOUND|NOT_CHECKED","where":"Class.method or file:line"}],"filesOpened":["every file you read besides this packet"],"needs":{"kind":"file|symbol|config|runtime","what":"what would decide it","wouldOpen":"path"}}
-            - CONFIRMED: the hypothesis holds and no listed mitigation applies. REFUTED: the hypothesis does not hold. MITIGATED: it holds but a listed mitigation limits it. UNCERTAIN: the packet and two extra files per place do not decide it; then "needs" is required.
+            {"placeId":"PL-…","verdict":"CONFIRMED|REFUTED|MITIGATED|UNCERTAIN","confidence":"HIGH|MEDIUM|LOW","summary":"one or two sentences on what happens and why","remaining":"none, or how the failure still happens","evidence":[{"file":"path as printed","line":123,"snippet":"code copied verbatim from that line","claim":"what this line shows"}],"mitigationsChecked":[{"name":"<exact name from the place's list>","result":"FOUND|PARTIAL|NOT_FOUND|NOT_CHECKED","where":"Class.method or file:line"}],"filesOpened":["every file you opened"],"needs":{"kind":"file|symbol|config|runtime","what":"what would decide it","wouldOpen":"path"}}
+            - CONFIRMED: the failure the hypothesis describes can happen on at least one listed operation. REFUTED: it cannot; the scanner misread the code or a refuting mitigation is in place. MITIGATED: the pattern is there, but a listed mitigation covers every way the failure could happen. UNCERTAIN: the packet and the files you may open do not decide it; then "needs" is required.
+            - A mitigation that matches its text above is FOUND. One that leaves part of the hypothesis's failure open (only some exceptions, best effort, not a failed commit) is PARTIAL, and the verdict is CONFIRMED. NOT_FOUND means you looked where it would be; otherwise NOT_CHECKED.
+            - REFUTED and MITIGATED need "remaining": "none", or how the hypothesis's failure still happens; other problems belong in the summary. Anything but "none" is recorded as CONFIRMED for MITIGATED and UNCERTAIN for REFUTED.
+            - A no-hint place that is CONFIRMED needs "foundRule": the code of the failure found, from its section's list.
             - CONFIRMED, REFUTED and MITIGATED need at least one evidence object; MITIGATED cites the mitigation. Every snippet must appear within two lines of its line number; copy it from the slices or the file you opened.
             - Report every mitigation name of the place in mitigationsChecked; NOT_CHECKED lowers the confidence to MEDIUM.
+            - filesOpened lists every file you opened, printed ones included: at most two per place.
             - Leave out tier, model, batch, commit, status and every other field not shown here.
             """;
 }

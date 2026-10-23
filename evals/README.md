@@ -62,8 +62,10 @@ or build the atlas. The verdicts each seed should produce are in
 The golden test also runs the quick check's mechanical half without a model. The hypothesis
 catalogue must cover every rule. `audit plan`, `next` and `record` must handle
 `expected/audit/draft-ok.jsonl`, `draft-bad.jsonl` (both with a BOM and CRLF) and a missing
-draft as `audit/AuditStore` and `audit/Record` define. The full plan's size and estimate must
-match `expected/audit/plan.tsv`.
+draft as `audit/AuditStore` and `audit/Record` define; a MITIGATED row whose mitigation is only
+PARTIAL and that names a remaining failure must be stored as CONFIRMED. The full plan's size and
+estimate must match `expected/audit/plan.tsv`. `expected/places.tsv` pins every place, LOW and
+`no-hint` ones included, with rules about a transaction keyed by the method that opens it.
 
 ## Smoke test on Windows
 
@@ -102,8 +104,12 @@ The quick check on the golden fixture, 2026-10-23, `claude -p` with `--plugin-di
 
 | Run | Model | USD | Turns |
 |---|---|---|---|
-| `audit`, plan only (15 places, 2 batches; estimate $0.03 + $0.01 for the skill's turns) | Haiku 5.5 | 0.007 | 2 |
-| `audit --yes <id>`, 2 `place-checker` agents, 15 places judged, 0 unjudged | Haiku 5.5 | 0.039 | 8 |
+| `audit`, plan only (16 places, 3 batches; estimate $0.04 + $0.01 for the skill's turns) | Haiku 5.5 | 0.007 | 2 |
+| `audit --yes <id>`, 3 `place-checker` agents, 16 places judged, 0 unjudged, every verdict as `verdicts-expected.tsv` says | Haiku 5.5 | 0.044 | 10 |
+
+The skill starts its agents in the foreground. A run whose agents went to the background ended
+the skill's turn: the session's default model (Opus) took over, cost ten times as much and was
+refused the scanner command that records the drafts.
 
 These runs calibrated `audit/Plan.java`. A checker's own context is about 30k tokens before
 the packet, and it writes about 2.4k tokens per place, thinking included. Sub-agents write the

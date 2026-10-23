@@ -253,14 +253,14 @@ public final class GoldenTest {
             System.out.println("AUDIT hypotheses.json rules " + hypotheses.keySet() + " differ from Risk.RULES " + Risk.RULES.keySet());
         }
         for (Hypotheses.Hypothesis h : hypotheses.values()) {
-            if (h.inScope() && h.mitigations().isEmpty()) {
+            if (h.inScope() && h.mitigations().isEmpty() && !h.code().equals(Places.NO_HINT)) {
                 problems++;
                 System.out.println("AUDIT " + h.code() + " is in scope but names no mitigation");
             }
         }
         Path audit = Files.createTempDirectory("audit-golden").resolve(".reliability").resolve("audit");
 
-        String plan1 = audit(fixture, atlas, audit, "plan", "--places", "PL-2ba53763,PL-55683365,PL-99da8683,PL-a39aeb08,PL-d0e0c22d,PL-4e2d7e2c");
+        String plan1 = audit(fixture, atlas, audit, "plan", "--places", "PL-2ba53763,PL-55683365,PL-99da8683,PL-a39aeb08,PL-d0e0c22d,PL-4e2d7e2c,PL-6a66916e");
         String id1 = planId(plan1);
         try {
             audit(fixture, atlas, audit, "next", "R00000000T000000Z");
@@ -280,12 +280,17 @@ public final class GoldenTest {
         problems += expectPlace(places, "PL-a39aeb08", "MITIGATED", "CURRENT", null);
         problems += expectPlace(places, "PL-d0e0c22d", "REFUTED", "CURRENT", null);
         problems += expectPlace(places, "PL-4e2d7e2c", null, "UNJUDGED", "partial");
+        problems += expectPlace(places, "PL-6a66916e", "CONFIRMED", "CURRENT", null);
+        if (places.containsKey("PL-6a66916e") && !"MITIGATED".equals(places.get("PL-6a66916e").get("draftVerdict"))) {
+            problems++;
+            System.out.println("AUDIT a MITIGATED draft that names a remaining failure was not recorded as CONFIRMED from MITIGATED");
+        }
         if (places.containsKey("PL-55683365") && !"MEDIUM".equals(places.get("PL-55683365").get("confidence"))) {
             problems++;
             System.out.println("AUDIT a NOT_CHECKED mitigation did not cap HIGH confidence at MEDIUM");
         }
         Map<String, Map<String, Object>> stored = byKey(audit.resolve("places").resolve(batch1 + ".jsonl"), "placeId");
-        problems += expectOpened(stored, "PL-a39aeb08", List.of("src/main/java/com/acme/care/billing/persistence/EventReceipt.java"));
+        problems += expectOpened(stored, "PL-a39aeb08", List.of("src/main/java/com/acme/care/billing/persistence/PaypalReceipt.java"));
         problems += expectOpened(stored, "PL-2ba53763", List.of());
         Map<String, String> idBySymbol = new HashMap<>();
         for (String line : Files.readAllLines(atlas.resolve("entrypoints.jsonl"), StandardCharsets.UTF_8)) {
@@ -315,10 +320,10 @@ public final class GoldenTest {
         problems += expectRejected(bad, "PL-711bd529", "needs");
         problems += expectRejected(bad, "PL-77298363", "sets tier");
 
-        String id3 = planId(audit(fixture, atlas, audit, "plan", "--places", "PL-d03c7988"));
+        String id3 = planId(audit(fixture, atlas, audit, "plan", "--places", "PL-e4f53a00"));
         String batch3 = batchOf(audit(fixture, atlas, audit, "next", id3));
         audit(fixture, atlas, audit, "record", batch3);
-        problems += expectPlace(byKey(audit.resolve("places.jsonl"), "placeId"), "PL-d03c7988", null, "UNJUDGED", "no-draft");
+        problems += expectPlace(byKey(audit.resolve("places.jsonl"), "placeId"), "PL-e4f53a00", null, "UNJUDGED", "no-draft");
 
         Path fresh = Files.createTempDirectory("audit-golden-plan").resolve("audit");
         audit(fixture, atlas, fresh, "plan", "--model", "haiku");

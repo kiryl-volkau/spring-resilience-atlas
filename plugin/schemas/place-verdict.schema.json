@@ -2,17 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "place-verdict.schema.json",
   "title": "Place verdict",
-  "description": "One stored row of .reliability/audit/places/<batch>.jsonl: the quick check's verdict on one place, or why it has none. The checker writes only placeId, verdict, confidence, summary, evidence, mitigationsChecked, filesOpened and needs; the scanner's audit record command validates them and stamps the rest.",
+  "description": "One stored row of .reliability/audit/places/<batch>.jsonl: the quick check's verdict on one place, or why it has none. The checker writes only placeId, verdict, confidence, summary, remaining, foundRule, evidence, mitigationsChecked, filesOpened and needs; the scanner's audit record command validates them and stamps the rest.",
   "type": "object",
   "required": ["placeId", "tier", "model", "batch", "core", "recordedAt", "status"],
   "properties": {
     "placeId": {"type": "string", "pattern": "^PL-[0-9a-f]{8}([0-9a-f]{4})?$"},
     "rule": {"type": "string", "description": "The code hint's rule code."},
-    "level": {"enum": ["HIGH", "MEDIUM"]},
+    "level": {"enum": ["HIGH", "MEDIUM", "LOW", "NONE"], "description": "NONE for a no-hint sweep place."},
     "file": {"type": "string"},
-    "symbol": {"type": "string", "description": "Class.method enclosing the rule's first evidence."},
+    "symbol": {"type": "string", "description": "Class.method enclosing the rule's first evidence; for a rule about a transaction, the method that opens it; for a no-hint place, the entry method."},
     "operationIds": {"type": "array", "items": {"type": "string"}},
-    "verdict": {"enum": ["CONFIRMED", "REFUTED", "MITIGATED", "UNCERTAIN"], "description": "Absent on UNJUDGED rows."},
+    "verdict": {"enum": ["CONFIRMED", "REFUTED", "MITIGATED", "UNCERTAIN"], "description": "Absent on UNJUDGED rows. MITIGATED only when a listed mitigation was FOUND in full and nothing remains."},
+    "draftVerdict": {"enum": ["REFUTED", "MITIGATED"], "description": "Stamped when the scanner recorded a stricter verdict than the draft: MITIGATED that names a remaining failure or has no mitigation FOUND in full becomes CONFIRMED; REFUTED that names one becomes UNCERTAIN."},
+    "downgraded": {"type": "string", "description": "Why draftVerdict was not kept."},
+    "remaining": {"type": "string", "description": "Required in a REFUTED or MITIGATED draft: none, or how the failure still happens. Stored when it names something."},
+    "foundRule": {"type": "string", "description": "For a CONFIRMED no-hint place: the rule code of the failure the sweep found."},
     "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"], "description": "Capped at MEDIUM when any mitigation was NOT_CHECKED."},
     "summary": {"type": "string"},
     "evidence": {
@@ -37,7 +41,7 @@
         "required": ["name", "result"],
         "properties": {
           "name": {"type": "string"},
-          "result": {"enum": ["FOUND", "NOT_FOUND", "NOT_CHECKED"]},
+          "result": {"enum": ["FOUND", "PARTIAL", "NOT_FOUND", "NOT_CHECKED"], "description": "PARTIAL: the mitigation covers only some of the failures; it never makes a place MITIGATED."},
           "where": {"type": "string"}
         }
       }
@@ -52,9 +56,9 @@
         "wouldOpen": {"type": "string"}
       }
     },
-    "filesOpened": {"type": "array", "items": {"type": "string"}, "description": "Every file the checker read besides the packet."},
+    "filesOpened": {"type": "array", "items": {"type": "string"}, "description": "Every file the checker opened besides the packet, printed ones included."},
     "openedFiles": {"type": "array", "items": {"type": "string"}, "description": "The files in filesOpened that the packet neither printed nor listed."},
-    "overBudget": {"type": "integer", "description": "Present when openedFiles exceeds the per-place budget."},
+    "overBudget": {"type": "integer", "description": "Present when filesOpened exceeds the per-place budget of two."},
     "tier": {"enum": ["TRIAGE", "DEEP", "VERIFIED"]},
     "model": {"type": "string"},
     "batch": {"type": "string", "pattern": "^B-R[0-9]{8}T[0-9]{6}Z-[0-9]+$"},
