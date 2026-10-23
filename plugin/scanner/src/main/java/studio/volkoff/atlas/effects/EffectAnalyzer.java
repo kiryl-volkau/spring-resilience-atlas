@@ -433,7 +433,7 @@ public final class EffectAnalyzer {
             String simple = JavaSourceParser.simpleTypeName(r.typeText());
             if (r.field() && shared && !s.chained() && !caller.method().isConstructor()
                     && (Signals.STATE_TYPES.contains(simple) || Signals.CACHE_TYPES.contains(simple))
-                    && Signals.STATE_MUTATORS.contains(name)) {
+                    && Signals.isStateMutator(name)) {
                 add(Signals.STATE, s.receiver() + "." + name + " (" + simple
                         + (Signals.CACHE_TYPES.contains(simple) ? ", cache" : "") + ")", file, s.line(), symbol, hop, tx);
                 return;

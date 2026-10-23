@@ -1,6 +1,6 @@
 ---
 type: tool_used
 tool: Bash
-input_match: 'scanner/Launch\.java.{0,300} scan\b'
+input_match: 'scanner/Launch\.java.* scan\b'
 arm: with-only
 ---

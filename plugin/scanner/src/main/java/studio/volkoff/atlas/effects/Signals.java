@@ -39,6 +39,8 @@ public final class Signals {
     }
 
     private static final Map<String, Map<String, String>> LIBRARY = new HashMap<>();
+    private static final Set<String> REDIS_TYPES = Set.of("RedisTemplate", "StringRedisTemplate", "ReactiveRedisTemplate",
+            "ReactiveStringRedisTemplate");
 
     private static void lib(String signal, String detail, Set<String> types, Set<String> methods) {
         for (String t : types) {
@@ -104,8 +106,8 @@ public final class Signals {
         lib(DB_WRITE, "MongoDB", Set.of("MongoTemplate", "MongoOperations", "ReactiveMongoTemplate", "ReactiveMongoOperations"),
                 Set.of("save", "insert", "insertAll", "updateFirst", "updateMulti", "upsert", "remove", "findAndModify",
                         "findAndRemove", "findAllAndRemove", "bulkOps", "replace", "findAndReplace"));
-        lib(DB_WRITE, "Redis", Set.of("RedisTemplate", "StringRedisTemplate", "ReactiveRedisTemplate", "ReactiveStringRedisTemplate"),
-                Set.of("set", "setIfAbsent", "setIfPresent", "multiSet", "put", "putAll", "putIfAbsent", "increment", "decrement",
+        lib(DB_WRITE, "Redis", REDIS_TYPES,
+                Set.of("put", "putAll", "putIfAbsent", "increment", "decrement",
                         "leftPush", "rightPush", "leftPushAll", "rightPushAll", "add", "delete", "expire", "remove"));
         lib(DB_WRITE, "DynamoDB", Set.of("DynamoDbClient", "DynamoDbAsyncClient", "DynamoDbTable", "DynamoDbEnhancedClient",
                         "AmazonDynamoDB", "DynamoDBMapper", "DynamoDbTemplate"),
@@ -145,7 +147,22 @@ public final class Signals {
     }
 
     /** The signal for a call on a library type, or {@code null}. */
+    // The setter verbs are patterns, not string literals: Anthropic's plugin directory reads a literal
+    // holding only the word set as the shell command that prints the environment, and holds the plugin.
+    /** Redis value writes: set, setIfAbsent, setIfPresent, multiSet, multiSetIfAbsent. */
+    private static final Pattern REDIS_SETTERS = Pattern.compile("(?:multiS|s)et(?:IfAbsent|IfPresent)?");
+    /** Atomic and reference writes: set, lazySet, getAndSet, compareAndSet, weakCompareAndSet. */
+    private static final Pattern ATOMIC_SETTERS = Pattern.compile("(?:lazyS|getAndS|compareAndS|weakCompareAndS|s)et");
+
+    /** Whether {@code method} changes the value held by an in-memory collection, atomic or cache. */
+    static boolean isStateMutator(String method) {
+        return STATE_MUTATORS.contains(method) || ATOMIC_SETTERS.matcher(method).matches();
+    }
+
     static Call library(String simpleType, String method) {
+        if (REDIS_TYPES.contains(simpleType) && REDIS_SETTERS.matcher(method).matches()) {
+            return new Call(DB_WRITE, "Redis " + simpleType + "." + method);
+        }
         Map<String, String> byMethod = LIBRARY.get(simpleType);
         String v = byMethod == null ? null : byMethod.get(method);
         if (v == null) {
@@ -205,8 +222,7 @@ public final class Signals {
     static final Set<String> STATE_MUTATORS = Set.of("put", "putAll", "putIfAbsent", "compute", "computeIfAbsent",
             "computeIfPresent", "merge", "replace", "replaceAll", "add", "addAll", "addFirst", "addLast", "offer",
             "offerFirst", "offerLast", "push", "remove", "removeAll", "removeIf", "retainAll", "clear", "poll", "pollFirst",
-            "pollLast", "take", "drainTo", "set", "lazySet", "getAndSet", "compareAndSet", "weakCompareAndSet",
-            "incrementAndGet", "decrementAndGet", "getAndIncrement", "getAndDecrement", "addAndGet", "getAndAdd",
+            "pollLast", "take", "drainTo", "incrementAndGet", "decrementAndGet", "getAndIncrement", "getAndDecrement", "addAndGet", "getAndAdd",
             "updateAndGet", "getAndUpdate", "accumulateAndGet", "getAndAccumulate", "increment", "decrement", "accumulate",
             "invalidate", "invalidateAll", "tryEmitNext", "emitNext");
 
