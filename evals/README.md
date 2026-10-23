@@ -53,10 +53,10 @@ Cases:
 ## Smoke test on Windows
 
 `claude plugin eval` with `Bash` needs WSL2, so on native Windows a single skill is checked
-with `claude -p` in a seeded scratch directory instead:
+with `claude -p` instead. Seed an empty scratch directory with `evals/_shared/seed-golden.sh`,
+whose `--scan` flag also builds the atlas, then run the skill from that directory:
 
 ```bash
-mkdir /tmp/golden && cd /tmp/golden && bash /path/to/spring-resilience-atlas/evals/_shared/seed-golden.sh --scan
 claude -p "/resilience-audit:critical-flow-tracer the billing webhook" --plugin-dir <plugin> \
   --allowedTools "Skill Read Glob Grep Agent" --output-format stream-json --verbose < /dev/null
 ```
@@ -67,11 +67,8 @@ are enough for the jar. The first run on 2026-10-22 got 12/12 evidence verified,
 
 ## Cost
 
-```bash
-evals/measure-cost.sh /path/to/snapshot "POST /stripe/webhook"
-```
-
-The script runs each skill through `claude -p` on a snapshot, plus the same catalog question
+Run `evals/measure-cost.sh` with a repository snapshot and, for the tracer, the flow's
+starting point, such as `POST /stripe/webhook`. The script runs each skill through `claude -p` on a snapshot, plus the same catalog question
 without the plugin. It prints tokens per model, list-price USD, turns and seconds. On a
 subscription the USD column is the API-price equivalent of what a run draws from the plan's
 limits.

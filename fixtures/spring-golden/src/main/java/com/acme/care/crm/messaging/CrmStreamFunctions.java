@@ -36,6 +36,6 @@ public class CrmStreamFunctions {
 
     @Bean
     public Supplier<CrmHeartbeat> crmHeartbeat() {
-        return () -> new CrmHeartbeat(System.getenv().getOrDefault("HOSTNAME", "local"), Instant.now());
+        return () -> new CrmHeartbeat("pid-" + ProcessHandle.current().pid(), Instant.now());
     }
 }
