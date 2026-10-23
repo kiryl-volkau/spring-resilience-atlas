@@ -1,7 +1,7 @@
 {
   "name": "resilience-audit",
   "displayName": "Resilience Audit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reliability audits for large Spring Boot applications: a deterministic atlas of entry points, then narrow evidence-backed audits per business flow.",
   "author": {
     "name": "Kiryl Volkau"
