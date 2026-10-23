@@ -13,7 +13,8 @@ set -uo pipefail
 export MSYS_NO_PATHCONV=1
 # Native Windows programs (claude.exe, java.exe) need C:/... paths, not Git Bash's /c/...
 winpath() { (cd "$1" && (pwd -W 2>/dev/null || pwd)); }
-plugin="$(winpath "$(dirname "$0")/..")"
+root="$(winpath "$(dirname "$0")/..")"
+plugin="$root/plugin"
 repo="$(winpath "$1")"
 flow="${2:-}"
 out="$repo.cost"
@@ -44,4 +45,4 @@ if [[ -n "$flow" ]]; then
   run 5-critical-flow-tracer "Skill Read Glob Grep Agent" "/resilience-audit:critical-flow-tracer $flow" --plugin-dir "$plugin"
 fi
 
-java -cp "$plugin/scanner/dist/resilience-atlas.jar" "$plugin/evals/CostReport.java" "$out"
+java -cp "$root/dist/resilience-atlas.jar" "$root/evals/CostReport.java" "$out"

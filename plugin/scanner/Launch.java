@@ -49,7 +49,7 @@ public final class Launch {
         run(build, args);
     }
 
-    /** Sources and resources keyed by where they go in the build, mirroring {@code scanner/pom.xml}. */
+    /** Sources and resources keyed by where they go in the build, mirroring the repository's {@code pom.xml}. */
     private static Map<String, Path> inputs(Path scanner) throws IOException {
         Map<String, Path> inputs = new TreeMap<>();
         add(inputs, scanner.resolve("src/main/java"), JAVA);

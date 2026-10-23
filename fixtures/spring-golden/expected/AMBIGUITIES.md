@@ -1,4 +1,4 @@
-# Ambiguities in `schemas/entrypoint-rules.md`
+# Ambiguities in `plugin/schemas/entrypoint-rules.md`
 
 Cases in this fixture where the rules allow more than one reading, and the reading the
 expected output uses (the most literal one). Paths are relative to `fixtures/spring-golden/`.
@@ -94,7 +94,7 @@ expected output uses (the most literal one). Paths are relative to `fixtures/spr
 
 ## Resolutions (2026-10-22)
 
-`schemas/entrypoint-rules.md` now settles each point above:
+`plugin/schemas/entrypoint-rules.md` now settles each point above:
 
 1. Status covers `subkind` and `target` only. An unresolvable `attrs` value no longer makes a
    record UNKNOWN (`downloadStatement` → STATIC).

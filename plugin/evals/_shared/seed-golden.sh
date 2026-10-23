@@ -4,7 +4,8 @@
 # The answer files (expected/, SEEDED.md) are removed so the model under test never sees them.
 set -euo pipefail
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cp -R "$plugin_root/fixtures/spring-golden/." .
+# The golden fixture lives beside the plugin in the repository and does not ship with it.
+cp -R "$plugin_root/../fixtures/spring-golden/." .
 rm -rf expected SEEDED.md
 git init -q
 git -c core.autocrlf=false add -A

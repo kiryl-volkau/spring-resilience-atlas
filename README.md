@@ -14,7 +14,7 @@ architecture and gives different coverage on every run. This plugin instead:
 3. runs small, narrow audit skills that query the atlas and open only the code needed to
    prove or disprove one reliability hypothesis for one flow.
 
-![The report on the synthetic golden fixture](assets/report.png)
+![The report on the synthetic golden fixture](plugin/assets/report.png)
 
 > **Status: scaffold.** The entry-point atlas, the effect analysis and the HTML report work:
 > scanner, query CLI, the report and four phase-1 skills. The audit skills that turn hints into
@@ -106,7 +106,7 @@ Written into the audited repository under `.reliability/atlas/`:
 | `migrations.jsonl` | Flyway / Liquibase changes | planned |
 
 What produces each entry-point record, and how each field is computed, is defined in
-[`schemas/entrypoint-rules.md`](schemas/entrypoint-rules.md). Every record carries:
+[`plugin/schemas/entrypoint-rules.md`](plugin/schemas/entrypoint-rules.md). Every record carries:
 
 - the file, line, class, method and triggering annotation;
 - the build module;
@@ -147,7 +147,7 @@ Measured on real repositories:
 - the blind spots: what a source scan could not see in this application.
 
 A **code hint** (High, Medium, Low, No pattern, Not analysed) comes from rules in
-`scanner/.../report/Risk.java` applied to the effects. Examples are work handed to an in-memory
+`plugin/scanner/.../report/Risk.java` applied to the effects. Examples are work handed to an in-memory
 thread after the caller was answered, a message sent before the commit, or a job without a lock.
 A hint says where to look first; it is not a verdict.
 
@@ -190,16 +190,22 @@ the application:
 
 ## Layout
 
+Only `plugin/` is installed. Everything else in the repository is for developing it.
+
 ```text
-.claude-plugin/plugin.json   plugin manifest; marketplace.json lists it for installation
-skills/<skill>/SKILL.md      atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, report
-agents/flow-tracer.md        forked agent behind critical-flow-tracer
-references/atlas-cli.md      the query CLI's commands, filters and output contract
-scanner/                     atlas builder and query CLI: dependency-free Java, run from source by Launch.java
-schemas/                     entry-point rules, and entrypoint/domain/flow/finding JSON schemas
-fixtures/spring-golden/      synthetic Spring app with hand-written expected entry points
-evals/                       golden test, claude plugin eval cases, local corpus notes
-assets/                      icon and screenshot
+plugin/                             the plugin users install
+  .claude-plugin/plugin.json        plugin manifest
+  skills/<skill>/SKILL.md           atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, report
+  agents/flow-tracer.md             forked agent behind critical-flow-tracer
+  scanner/                          atlas builder and query CLI: dependency-free Java, run from source by Launch.java
+  schemas/                          entry-point rules, and entrypoint/domain/flow/finding JSON schemas
+  references/                       the query CLI's commands and what the atlas cannot see
+  evals/                            claude plugin eval cases
+  assets/                           icon and screenshot
+.claude-plugin/marketplace.json     lists plugin/ for installation
+pom.xml                             development build of the scanner jar
+fixtures/spring-golden/             synthetic Spring app with hand-written expected results
+evals/                              golden test and cost measurement
 ```
 
 ## Decisions
@@ -207,7 +213,7 @@ assets/                      icon and screenshot
 These were settled by a parser and corpus spike on 2026-10-22:
 
 - **Scanner.** Java on the JDK's own javac Tree API, with no dependencies. The plugin ships
-  its sources, and `scanner/Launch.java` compiles them on first use, so a directory listing
+  its sources, and `plugin/scanner/Launch.java` compiles them on first use, so a directory listing
   carries no binaries and nobody needs Maven. It needs a JDK 17+ on `PATH`. Unlike
   JavaParser, javac never lags the target's Java version.
 - **Storage.** JSONL that skills never load whole. The CLI prints a summary line, then TSV
@@ -223,9 +229,9 @@ Still open:
 ## Development
 
 ```bash
-java scanner/Launch.java version         # runs the scanner from source, as the skills do
-mvn -o -q -f scanner/pom.xml package     # builds scanner/dist/resilience-atlas.jar for the golden test
-java -cp scanner/dist/resilience-atlas.jar scanner/src/test/java/studio/volkoff/atlas/GoldenTest.java fixtures/spring-golden
+java plugin/scanner/Launch.java version                                # runs the scanner from source, as the skills do
+mvn -o -q package                                                      # builds dist/resilience-atlas.jar
+java -cp dist/resilience-atlas.jar evals/GoldenTest.java fixtures/spring-golden   # golden test
 ```
 
 The build pins plugin versions that resolve from the local Maven cache (`-o`). Drop `-o` when
@@ -234,7 +240,7 @@ a Maven repository is reachable.
 Run Claude Code inside a Spring repository with this plugin loaded from disk:
 
 ```bash
-claude --plugin-dir /path/to/spring-resilience-atlas
+claude --plugin-dir /path/to/spring-resilience-atlas/plugin
 ```
 
 Skills are invoked as `/resilience-audit:<skill>`, and `/reload-plugins` picks up edits

@@ -1,5 +1,3 @@
-package studio.volkoff.atlas;
-
 import studio.volkoff.atlas.json.Json;
 import studio.volkoff.atlas.query.Query;
 import studio.volkoff.atlas.report.Risk;
@@ -17,7 +15,7 @@ import java.util.TreeMap;
 /**
  * Scans a fixture and compares the entry points with its hand-written {@code expected/} files.
  * No test framework, so it runs without a dependency download:
- * {@code java -cp scanner/dist/resilience-atlas.jar scanner/src/test/java/studio/volkoff/atlas/GoldenTest.java fixtures/spring-golden}.
+ * {@code java -cp dist/resilience-atlas.jar evals/GoldenTest.java fixtures/spring-golden}.
  * Exits 1 on any difference.
  */
 public final class GoldenTest {

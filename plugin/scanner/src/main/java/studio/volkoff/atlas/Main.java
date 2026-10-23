@@ -20,7 +20,7 @@ public final class Main {
     private static final String HELP = """
             resilience-atlas %s: static entry-point atlas for Spring repositories
 
-            java scanner/Launch.java <command> [options]    (or: java -jar resilience-atlas.jar <command> [options])
+            java <plugin>/scanner/Launch.java <command> [options]    (or: java -jar resilience-atlas.jar <command> [options])
 
               scan                         build .reliability/atlas for --repo (default .)
               report [--scan] [--open]     write .reliability/report.html from the atlas and any audit records;

@@ -19,18 +19,19 @@
 
     <build>
         <finalName>resilience-atlas</finalName>
+        <sourceDirectory>${project.basedir}/plugin/scanner/src/main/java</sourceDirectory>
         <!-- Schemas and the CLI reference ship inside the jar, so skills read them through the
              pre-approved `doc` command instead of a file read outside the user's project. -->
         <resources>
             <resource>
-                <directory>${project.basedir}/src/main/resources</directory>
+                <directory>${project.basedir}/plugin/scanner/src/main/resources</directory>
             </resource>
             <resource>
-                <directory>${project.basedir}/../schemas</directory>
+                <directory>${project.basedir}/plugin/schemas</directory>
                 <targetPath>docs</targetPath>
             </resource>
             <resource>
-                <directory>${project.basedir}/../references</directory>
+                <directory>${project.basedir}/plugin/references</directory>
                 <targetPath>docs</targetPath>
             </resource>
         </resources>

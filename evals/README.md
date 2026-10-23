@@ -7,8 +7,8 @@ There are two layers of checks.
 This test is deterministic and needs no model and no network:
 
 ```bash
-mvn -o -q -f scanner/pom.xml package
-java -cp scanner/dist/resilience-atlas.jar scanner/src/test/java/studio/volkoff/atlas/GoldenTest.java fixtures/spring-golden
+mvn -o -q package
+java -cp dist/resilience-atlas.jar evals/GoldenTest.java fixtures/spring-golden
 ```
 
 It scans `fixtures/spring-golden` and compares the result with the hand-written files in
@@ -22,24 +22,25 @@ It scans `fixtures/spring-golden` and compares the result with the hand-written 
 - `risk.tsv`, the static attention level and the rule codes that must or must not fire.
 
 The command exits 1 on any difference. Each difference is either a scanner bug or a wrong expectation; decide
-which against `schemas/entrypoint-rules.md`.
+which against `plugin/schemas/entrypoint-rules.md`.
 
 ## Plugin evals
 
-These cases run the skills through `claude plugin eval`. Each case seeds an empty workspace
-from the golden fixture through `_shared/seed-golden.sh`, which removes the answer files, and
+These cases run the skills through `claude plugin eval`, which reads cases only from inside
+the plugin, so they live in `plugin/evals/`. Each case seeds an empty workspace from the golden
+fixture through `plugin/evals/_shared/seed-golden.sh`, which removes the answer files, and
 grades:
 
 - whether the skill fired;
-- whether the atlas jar was used instead of grepping the tree;
+- whether the scanner was used instead of grepping the tree;
 - what was produced.
 
 ```bash
-claude plugin eval . --scaffold --allow-tools Bash Write --trust-plugin --no-publish
+claude plugin eval plugin --scaffold --allow-tools Bash Write --trust-plugin --no-publish
 ```
 
 Granting `Bash` requires Claude Code's OS sandbox, which native Windows lacks. Run the suite
-under WSL2, Linux or macOS, with a JDK 17+ on `PATH` and the jar built first.
+under WSL2, Linux or macOS, with a JDK 17+ on `PATH`.
 
 Cases:
 
@@ -48,21 +49,21 @@ Cases:
 | `atlas-bootstrap-builds-atlas` | the atlas comes from `scan`, counts and warnings reach the user |
 | `entrypoint-catalog-sqs-consumers` | SQS consumers come from atlas queries, programmatic polling included, with no tree grep |
 | `critical-flow-tracer-billing-webhook` | a flow file is written and every evidence line verifies |
-| `report-builds-page` | the page comes from the jar's `report` command, the Stripe webhook ranks first, and levels are not called verdicts |
+| `report-builds-page` | the page comes from the scanner's `report` command, the Stripe webhook ranks first, and levels are not called verdicts |
 
 ## Smoke test on Windows
 
 `claude plugin eval` with `Bash` needs WSL2, so on native Windows a single skill is checked
-with `claude -p` instead. Seed an empty scratch directory with `evals/_shared/seed-golden.sh`,
+with `claude -p` instead. Seed an empty scratch directory with `plugin/evals/_shared/seed-golden.sh`,
 whose `--scan` flag also builds the atlas, then run the skill from that directory:
 
 ```bash
-claude -p "/resilience-audit:critical-flow-tracer the billing webhook" --plugin-dir <plugin> \
+claude -p "/resilience-audit:critical-flow-tracer the billing webhook" --plugin-dir /path/to/spring-resilience-atlas/plugin \
   --allowedTools "Skill Read Glob Grep Agent" --output-format stream-json --verbose < /dev/null
 ```
 
 `--allowedTools` deliberately leaves out `Bash`. That proves the skills' own `allowed-tools`
-are enough for the jar. The first run on 2026-10-22 got 12/12 evidence verified, opened 5 of
+are enough for the scanner. The first run on 2026-10-22 got 12/12 evidence verified, opened 5 of
 12 files, and cost $0.51 on Opus.
 
 ## Cost

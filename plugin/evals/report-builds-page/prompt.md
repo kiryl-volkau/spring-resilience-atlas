@@ -1,5 +1,5 @@
 ---
-description: The report page is built by the jar, and the reply ranks the risky operations without calling them verdicts.
+description: The report page is built by the scanner's report command, and the reply ranks the risky operations without calling them verdicts.
 max_turns: 8
 allowed_tools: [Skill, Read, Glob, Grep]
 ---
