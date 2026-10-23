@@ -7,7 +7,11 @@
   "required": ["id", "ruleId", "commit", "flowId", "severity", "confidence", "status", "failureScenario", "evidence", "mitigationsChecked", "sourceBudget", "recommendation", "verification", "dedupeKey"],
   "properties": {
     "id": {"type": "string", "pattern": "^F-[0-9a-f]{8}$"},
-    "ruleId": {"type": "string", "pattern": "^[A-Z]{2,5}-[0-9]{3}$", "description": "Rule from the audit skill's rule file, e.g. DUR-001."},
+    "ruleId": {"type": "string", "pattern": "^[a-z-]+$|^[A-Z]{2,5}-[0-9]{3}$", "description": "A code hint's rule code, e.g. handoff-after-ack, or a rule from an audit skill's rule file, e.g. DUR-001."},
+    "operationId": {"type": "string", "description": "The entry point the finding belongs to, when it is not given by the flow."},
+    "placeId": {"type": "string", "pattern": "^PL-[0-9a-f]{8}([0-9a-f]{4})?$", "description": "The place in the code the finding is about."},
+    "title": {"type": "string"},
+    "verifiedBy": {"type": "object", "description": "Set by the verifier: model, run, outcome, note."},
     "commit": {"type": ["string", "null"]},
     "domain": {"type": ["string", "null"]},
     "flowId": {"type": "string"},

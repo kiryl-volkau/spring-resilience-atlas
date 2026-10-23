@@ -33,6 +33,16 @@ Flow: `BillingWebhookController.receiveStripeEvent` → `StripeWebhookService.ha
 - `billing/events/InvoiceNotificationListener.java:21`: the invoice e-mail is sent
   `AFTER_COMMIT`, not inside the transaction.
 
+## A hint the quick check must clear
+
+`POST /api/billing/webhooks/paypal` → `billing/service/PaypalWebhookService.java` (`handle`).
+The scanner reports `webhook-not-idempotent`, because its lookup patterns do not know the name
+`lookupByReference`. The code is idempotent: `handle` skips a delivery whose PayPal event id was
+already stored, and `billing/persistence/PaypalReceipt.java` puts a unique constraint on that id.
+The quick check must answer REFUTED (`lookup before write`, `unique event id`), not CONFIRMED.
+`audit/verdicts-expected.tsv` lists the verdict expected for every place of the fixture that a
+seed decides.
+
 ## Analyzer regression cases
 
 `shared/patterns/` and `legacy/portlet/` isolate cases the effect analysis once got wrong. They are

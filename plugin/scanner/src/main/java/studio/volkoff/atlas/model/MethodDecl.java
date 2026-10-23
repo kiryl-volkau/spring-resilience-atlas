@@ -6,6 +6,8 @@ import java.util.Map;
 /**
  * A method or annotation member.
  *
+ * @param line           first line of the declaration, annotations included
+ * @param endLine        last line of the declaration, its closing brace; 0 when unknown
  * @param returnType     return type text as written, {@code null} for constructors
  * @param params         parameters in declaration order
  * @param hasBody        false for abstract and interface methods without a default body
@@ -21,6 +23,7 @@ public record MethodDecl(
         String name,
         List<Anno> annos,
         int line,
+        int endLine,
         String returnType,
         List<Param> params,
         boolean isPublic,

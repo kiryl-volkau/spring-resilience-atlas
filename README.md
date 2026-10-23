@@ -16,9 +16,10 @@ architecture and gives different coverage on every run. This plugin instead:
 
 ![The report on the synthetic golden fixture](plugin/assets/report.png)
 
-> **Status: scaffold.** The entry-point atlas, the effect analysis and the HTML report work:
-> scanner, query CLI, the report and four phase-1 skills. The audit skills that turn hints into
-> verdicts are not built yet.
+> **Status: early.** The entry-point atlas, the effect analysis, the HTML report and the quick
+> check work: scanner, query CLI, the report, four phase-1 skills and the `audit` skill, which
+> checks every high and medium hint with a cheap model. The deep audit that verifies findings
+> is not built yet.
 
 ## Install
 
@@ -155,6 +156,30 @@ A hint says where to look first; it is not a verdict.
 audit verdicts and findings in `.reliability/audit/`, and the generator computes every colour
 from those records. The skill costs about $0.01 on Haiku.
 
+## The quick check
+
+`/resilience-audit:audit` turns hints into verdicts without one agent per operation. The work
+is a funnel:
+
+1. **Hints, no model.** The scan and `Risk.java` flag operations, as above.
+2. **Places, no model.** Operations that share the code a fix would change are grouped into one
+   place: a rule code at the method enclosing its evidence. A large application has far fewer
+   places than operations.
+3. **Quick check, cheap model.** The scanner writes an evidence packet per batch of up to eight
+   places: the rule's hypothesis, its named mitigations, the effects it cited and the methods
+   around them. A `place-checker` agent (Haiku by default) answers CONFIRMED, REFUTED, MITIGATED
+   or UNCERTAIN per place, with evidence that the scanner verifies line by line before it stores
+   the verdict.
+4. **Deep audit, strong model** (next): the confirmed high places and the ones a user picks,
+   traced in full and checked by a verifier that tries to disprove each finding.
+
+The first call only plans: it prints the places, the estimated tokens and dollars, the cap and
+the command that runs exactly that plan, and spends nothing. A run counts each batch as spent
+when it starts, stops at the cap, and never checks a place again until its code changes. The
+report then shows quick-check verdicts on its places, operations as Smells ("suspected") or
+Checked (quick), and `.reliability/backlog.md` lists one task per confirmed place with its
+evidence, the mitigations checked, a fix and a way to verify it.
+
 Inventories and hints were checked by hand against the local corpus (`evals/corpus.md`). Those
 results stay outside this repository, like the corpus itself; the golden fixture pins the rules
 they led to.
@@ -174,7 +199,7 @@ which audit profiles actually ran against which commit.
 
 | Phase                | Skills                                                                                                                                                                                    |
 |----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1. Atlas (MVP)       | built: `atlas-bootstrap`, `entrypoint-catalog`, `domain-cartographer`, `critical-flow-tracer` (agent `flow-tracer`), `report`. Next: `critical-flow-discovery`                          |
+| 1. Atlas (MVP)       | built: `atlas-bootstrap`, `entrypoint-catalog`, `domain-cartographer`, `critical-flow-tracer` (agent `flow-tracer`), `report`, `audit` (quick check, agent `place-checker`). Next: the deep audit and its verifier, `critical-flow-discovery` |
 | 2. Reliability       | `durable-handoff-audit`, `transaction-dual-write-audit`, `messaging-reliability-audit`, `idempotency-retry-audit`, `async-execution-audit`, `external-dependency-resilience-audit`, `shutdown-deployment-audit` |
 | 3. Observability     | `observability-coverage-map`, `trace-continuity-audit`, `sli-alert-audit`, `logging-diagnostics-audit`, `production-evidence-correlator`, `recovery-reconciliation-audit`                |
 | 4. Verification      | `finding-verifier-deduper`, `failure-injection-test-designer`, `backlog-task-generator`, `coverage-ledger`                                                                               |
@@ -195,8 +220,9 @@ Only `plugin/` is installed. Everything else in the repository is for developing
 ```text
 plugin/                             the plugin users install
   .claude-plugin/plugin.json        plugin manifest
-  skills/<skill>/SKILL.md           atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, report
+  skills/<skill>/SKILL.md           atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, report, audit
   agents/flow-tracer.md             forked agent behind critical-flow-tracer
+  agents/place-checker.md           the quick check's judge, one batch of places per agent
   scanner/                          atlas builder and query CLI: dependency-free Java, run from source by Launch.java
   schemas/                          entry-point rules, and entrypoint/domain/flow/finding JSON schemas
   references/                       the query CLI's commands and what the atlas cannot see
@@ -218,7 +244,7 @@ These were settled by a parser and corpus spike on 2026-10-22:
   JavaParser, javac never lags the target's Java version.
 - **Storage.** JSONL that skills never load whole. The CLI prints a summary line, then TSV
   projections, 50 rows by default.
-- **Models.** Haiku for the mechanical catalog skills, Sonnet for domain mapping, Opus for
+- **Models.** Haiku for the mechanical catalog skills and the quick check, Sonnet for domain mapping, Opus for
   flow tracing. Fable 5.1 is reserved for the audit reasoning that comes next.
 
 Still open:

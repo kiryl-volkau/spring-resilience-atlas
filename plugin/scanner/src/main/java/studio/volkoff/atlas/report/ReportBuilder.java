@@ -1,5 +1,6 @@
 package studio.volkoff.atlas.report;
 
+import studio.volkoff.atlas.audit.Derive;
 import studio.volkoff.atlas.json.Json;
 import studio.volkoff.atlas.query.AtlasStore;
 import studio.volkoff.atlas.scan.Scanner;
@@ -35,9 +36,13 @@ public final class ReportBuilder {
     public record Options(Path repo, Path atlasDir, Path auditDir, Path flowsDir, Path out, String title) {
     }
 
-    /** What the command prints: counts and the top of the attention list. */
+    /**
+     * What the command prints: counts and the top of the attention list.
+     *
+     * @param checkedQuick operations whose GREEN comes from the quick check only, counted in {@code byColour} as GREEN too
+     */
     public record Summary(Path out, int operations, Map<String, Integer> byKind, Map<String, Integer> byLevel,
-                          Map<String, Integer> byColour, int notAnalysed, List<Map<String, Object>> top,
+                          Map<String, Integer> byColour, int checkedQuick, int notAnalysed, List<Map<String, Object>> top,
                           List<String> warnings, String auditStatus, List<String> auditProblems) {
     }
 
@@ -53,6 +58,13 @@ public final class ReportBuilder {
     private final List<String> auditProblems = new ArrayList<>();
 
     public Summary build(Options o) throws IOException {
+        try {
+            Derive.refresh(o.repo(), o.atlasDir(), o.auditDir());
+        } catch (IOException | RuntimeException e) {
+            auditProblems.add("the audit store could not be read, so its verdicts are not refreshed: " + e.getMessage());
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
         AtlasStore atlas = AtlasStore.open(o.repo(), o.atlasDir());
         Map<String, Map<String, Object>> effectsById = new HashMap<>();
         for (Map<String, Object> row : atlas.effects()) {
@@ -67,19 +79,12 @@ public final class ReportBuilder {
 
         List<Map<String, Object>> eps = atlas.entrypoints();
         Risk.Context context = Risk.Context.from(eps);
-        boolean domains = !atlas.domains().isEmpty();
-        Map<String, Long> perModule = new HashMap<>();
-        for (Map<String, Object> e : eps) {
-            perModule.merge(String.valueOf(e.get("module")), 1L, Long::sum);
-        }
-        long largest = perModule.values().stream().mapToLong(Long::longValue).max().orElse(0);
-        // A module split where one module holds nearly everything tells the reader nothing.
-        boolean byModule = perModule.size() > 1 && largest < 0.9 * eps.size();
-        String commonPrefix = commonPackagePrefix(eps);
+        AreaRule areaRule = AreaRule.of(atlas);
 
         List<String> files = new ArrayList<>();
         Map<String, Integer> fileIndex = new HashMap<>();
         List<Map<String, Object>> ops = new ArrayList<>();
+        List<Places.Input> placeInputs = new ArrayList<>();
         Map<String, Map<String, Object>> flows = new LinkedHashMap<>();
         for (Map<String, Object> ep : eps) {
             String id = String.valueOf(ep.get("id"));
@@ -87,6 +92,7 @@ public final class ReportBuilder {
             List<Map<String, Object>> effects = fx == null ? List.of() : maps(fx.get("effects"));
             String entryReturns = fx == null || fx.get("entryReturns") == null ? null : fx.get("entryReturns").toString();
             Risk.Assessment risk = Risk.assess(ep, effects, entryReturns, context);
+            placeInputs.add(new Places.Input(ep, effects, risk));
             Map<String, Object> op = new LinkedHashMap<>();
             String cls = String.valueOf(ep.get("cls"));
             op.put("id", id);
@@ -99,7 +105,7 @@ public final class ReportBuilder {
             op.put("file", index(String.valueOf(ep.get("file")), files, fileIndex));
             op.put("line", ep.get("line"));
             op.put("module", ep.get("module"));
-            op.put("area", area(atlas, ep, cls, domains, byModule, commonPrefix));
+            op.put("area", area(atlas, ep, cls, areaRule));
             op.put("discovery", ep.get("status"));
             op.put("origin", ep.get("origin"));
             op.put("via", ep.get("via"));
@@ -174,6 +180,38 @@ public final class ReportBuilder {
             }
         }
 
+        Places.Result placeResult = Places.derive(placeInputs);
+        for (Map<String, Object> op : ops) {
+            op.put("placeIds", placeResult.placeIdsByOp().getOrDefault(String.valueOf(op.get("id")), List.of()));
+        }
+        Map<String, Map<String, Object>> placeVerdicts = new HashMap<>();
+        for (Map<String, Object> v : readAudit(o.auditDir().resolve("places.jsonl"))) {
+            placeVerdicts.put(String.valueOf(v.get("placeId")), v);
+        }
+        List<Map<String, Object>> places = new ArrayList<>();
+        for (Places.Place p : placeResult.places()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", p.id());
+            m.put("code", p.code());
+            m.put("level", p.level().name());
+            m.put("title", p.title());
+            m.put("file", index(p.file(), files, fileIndex));
+            m.put("symbol", p.symbol());
+            m.put("line", p.line());
+            m.put("ops", p.ops());
+            m.put("o", p.sampleOp());
+            m.put("ev", p.sampleEffect());
+            Map<String, Object> v = placeVerdicts.get(p.id());
+            if (v != null) {
+                for (String k : List.of("verdict", "confidence", "tier", "status", "summary", "reason")) {
+                    if (v.get(k) != null) {
+                        m.put(k, v.get(k));
+                    }
+                }
+            }
+            places.add(m);
+        }
+
         Map<String, Object> manifest = atlas.manifest;
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("title", o.title() != null ? o.title() : defaultTitle(o.repo()));
@@ -185,7 +223,7 @@ public final class ReportBuilder {
             atlasInfo.put(k, manifest.get(k));
         }
         atlasInfo.put("effectsPresent", Files.exists(o.atlasDir().resolve("effects.jsonl")));
-        atlasInfo.put("areaSource", domains ? "domain" : byModule ? "module" : "package");
+        atlasInfo.put("areaSource", areaRule.domains() ? "domain" : areaRule.byModule() ? "module" : "package");
         data.put("atlas", atlasInfo);
         data.put("warnings", warnings(manifest));
         data.put("unresolvedAnnotations", manifest.getOrDefault("unresolvedAnnotations", List.of()));
@@ -193,9 +231,15 @@ public final class ReportBuilder {
         Risk.RULES.forEach((code, tt) -> rules.put(code, Map.of("title", tt[0], "text", tt[1])));
         data.put("rules", rules);
         data.put("coverage", coverage);
+        Path backlog = o.auditDir().toAbsolutePath().getParent().resolve("backlog.md");
+        if (Files.exists(backlog)) {
+            Path from = o.out().toAbsolutePath().getParent();
+            data.put("backlog", backlog.getRoot().equals(from.getRoot()) ? from.relativize(backlog).toString().replace('\\', '/') : backlog.toUri().toString());
+        }
         data.put("auditProblems", auditProblems);
         data.put("files", files);
         data.put("ops", ops);
+        data.put("places", places);
         data.put("flows", flows);
 
         // Escaping every "<" keeps "</script>" and "<!--" in snippets from ending the data block.
@@ -314,9 +358,13 @@ public final class ReportBuilder {
         }
         byLevel.put(NOT_ANALYSED, 0);
         int notAnalysed = 0;
+        int checkedQuick = 0;
         for (Map<String, Object> op : ops) {
             byKind.merge(String.valueOf(op.get("kind")), 1, Integer::sum);
             byColour.merge(String.valueOf(op.get("colour")), 1, Integer::sum);
+            if ("GREEN".equals(op.get("colour")) && op.get("verdict") instanceof Map<?, ?> v && Boolean.TRUE.equals(v.get("triage"))) {
+                checkedQuick++;
+            }
             boolean analysed = op.get("reach") instanceof Map<?, ?> r && Boolean.TRUE.equals(r.get("analysed"));
             if (!analysed) {
                 notAnalysed++;
@@ -331,7 +379,7 @@ public final class ReportBuilder {
         if (manifest.get("warnings") instanceof List<?> w) {
             w.forEach(x -> warnings.add(String.valueOf(x)));
         }
-        return new Summary(out, ops.size(), byKind, byLevel, byColour, notAnalysed, top.subList(0, Math.min(10, top.size())),
+        return new Summary(out, ops.size(), byKind, byLevel, byColour, checkedQuick, notAnalysed, top.subList(0, Math.min(10, top.size())),
                 warnings, String.valueOf(coverage.getOrDefault("status", "NOT_RUN")), auditProblems);
     }
 
@@ -466,8 +514,34 @@ public final class ReportBuilder {
         return tags;
     }
 
-    private static String area(AtlasStore atlas, Map<String, Object> ep, String cls, boolean domains, boolean byModule,
-                               String commonPrefix) throws IOException {
+    /** The area each operation is grouped under on the page: its domain, else its module, else its package below the common prefix. */
+    public static Map<String, String> areas(AtlasStore atlas) throws IOException {
+        AreaRule rule = AreaRule.of(atlas);
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map<String, Object> ep : atlas.entrypoints()) {
+            out.put(String.valueOf(ep.get("id")), area(atlas, ep, String.valueOf(ep.get("cls")), rule));
+        }
+        return out;
+    }
+
+    private record AreaRule(boolean domains, boolean byModule, String commonPrefix) {
+        static AreaRule of(AtlasStore atlas) throws IOException {
+            List<Map<String, Object>> eps = atlas.entrypoints();
+            Map<String, Long> perModule = new HashMap<>();
+            for (Map<String, Object> e : eps) {
+                perModule.merge(String.valueOf(e.get("module")), 1L, Long::sum);
+            }
+            long largest = perModule.values().stream().mapToLong(Long::longValue).max().orElse(0);
+            // A module split where one module holds nearly everything tells the reader nothing.
+            boolean byModule = perModule.size() > 1 && largest < 0.9 * eps.size();
+            return new AreaRule(!atlas.domains().isEmpty(), byModule, commonPackagePrefix(eps));
+        }
+    }
+
+    private static String area(AtlasStore atlas, Map<String, Object> ep, String cls, AreaRule rule) throws IOException {
+        boolean domains = rule.domains();
+        boolean byModule = rule.byModule();
+        String commonPrefix = rule.commonPrefix();
         if (domains) {
             String d = atlas.domainOf(cls);
             return d == null ? "(unassigned)" : d;

@@ -1,0 +1,10 @@
+{
+  "asOf": "2026-10-23",
+  "source": "list prices in USD per million tokens from the claude-api skill's table. cacheWriteFactor is the premium a sub-agent pays to write the prompt cache (the five-minute lifetime); haiku's cacheRead and cacheWriteFactor were measured from claude -p cost reports on the golden fixture, the other models' factors are assumed equal",
+  "models": {
+    "haiku": {"id": "claude-haiku-5-5", "input": 0.10, "output": 0.50, "cacheRead": 0.01, "cacheWriteFactor": 1.25},
+    "sonnet": {"id": "claude-sonnet-5-5", "input": 2.00, "output": 10.00, "cacheRead": 0.20, "cacheWriteFactor": 1.25},
+    "opus": {"id": "claude-opus-5-5", "input": 4.00, "output": 20.00, "cacheRead": 0.20, "cacheWriteFactor": 1.25},
+    "fable": {"id": "claude-fable-5-1", "input": 10.00, "output": 50.00, "cacheRead": 0.25, "cacheWriteFactor": 1.25}
+  }
+}

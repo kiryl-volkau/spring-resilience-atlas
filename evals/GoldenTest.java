@@ -1,5 +1,10 @@
+import studio.volkoff.atlas.audit.Audit;
+import studio.volkoff.atlas.audit.Hypotheses;
 import studio.volkoff.atlas.json.Json;
+import studio.volkoff.atlas.query.Args;
+import studio.volkoff.atlas.query.AtlasStore;
 import studio.volkoff.atlas.query.Query;
+import studio.volkoff.atlas.report.Places;
 import studio.volkoff.atlas.report.Risk;
 import studio.volkoff.atlas.scan.Scanner;
 
@@ -110,6 +115,8 @@ public final class GoldenTest {
         }
         problems += checkSignals(fixture.resolve("expected/signals.tsv"), atlas);
         problems += checkRisk(fixture.resolve("expected/risk.tsv"), atlas);
+        problems += checkPlaces(fixture.resolve("expected/places.tsv"), fixture, atlas);
+        problems += checkAudit(fixture, atlas);
         int total = actual.values().stream().mapToInt(Integer::intValue).sum();
         System.out.println("# golden: " + total + " actual, " + expected.values().stream().mapToInt(Integer::intValue).sum()
                 + " expected, " + problems + " differences");
@@ -185,6 +192,227 @@ public final class GoldenTest {
             }
         }
         return problems;
+    }
+
+    /**
+     * Rows of {@code rule, file, symbol, level, operations}: every place the report groups by, with
+     * the sorted {@code Class.method} list of the operations reaching it. The set must match exactly.
+     */
+    private static int checkPlaces(Path expectedFile, Path fixture, Path atlas) throws Exception {
+        if (!Files.exists(expectedFile)) {
+            return 0;
+        }
+        List<Places.Input> inputs = Places.inputs(AtlasStore.open(fixture, atlas));
+        Map<String, String> symbolById = new HashMap<>();
+        for (Places.Input in : inputs) {
+            symbolById.put(in.id(), Query.symbol(String.valueOf(in.ep().get("cls")), String.valueOf(in.ep().get("method"))));
+        }
+        java.util.Set<String> actual = new java.util.TreeSet<>();
+        for (Places.Place p : Places.derive(inputs).places()) {
+            List<String> ops = new ArrayList<>(p.ops().stream().map(symbolById::get).toList());
+            java.util.Collections.sort(ops);
+            actual.add(String.join("\t", p.code(), p.file(), p.symbol(), p.level().name(), String.join(",", ops)));
+        }
+        java.util.Set<String> expected = new java.util.TreeSet<>();
+        List<String> rows = Files.readAllLines(expectedFile, StandardCharsets.UTF_8);
+        for (String row : rows.subList(1, rows.size())) {
+            if (!row.isBlank()) {
+                expected.add(row.strip());
+            }
+        }
+        int problems = 0;
+        for (String e : expected) {
+            if (!actual.contains(e)) {
+                problems++;
+                System.out.println("PLACE MISSING  " + e);
+            }
+        }
+        for (String a : actual) {
+            if (!expected.contains(a)) {
+                problems++;
+                System.out.println("PLACE EXTRA    " + a);
+            }
+        }
+        return problems;
+    }
+
+    /**
+     * The quick check's mechanical half, without a model: the hypothesis catalogue covers every
+     * rule; plan, next and record handle a good draft, a bad one and a missing one as the plan
+     * says; the full plan's size and estimate match {@code expected/audit/plan.tsv}.
+     */
+    private static int checkAudit(Path fixture, Path atlas) throws Exception {
+        Path expected = fixture.resolve("expected/audit");
+        if (!Files.exists(expected)) {
+            return 0;
+        }
+        int problems = 0;
+        Map<String, Hypotheses.Hypothesis> hypotheses = Hypotheses.load();
+        if (!hypotheses.keySet().equals(Risk.RULES.keySet())) {
+            problems++;
+            System.out.println("AUDIT hypotheses.json rules " + hypotheses.keySet() + " differ from Risk.RULES " + Risk.RULES.keySet());
+        }
+        for (Hypotheses.Hypothesis h : hypotheses.values()) {
+            if (h.inScope() && h.mitigations().isEmpty()) {
+                problems++;
+                System.out.println("AUDIT " + h.code() + " is in scope but names no mitigation");
+            }
+        }
+        Path audit = Files.createTempDirectory("audit-golden").resolve(".reliability").resolve("audit");
+
+        String plan1 = audit(fixture, atlas, audit, "plan", "--places", "PL-2ba53763,PL-55683365,PL-99da8683,PL-a39aeb08,PL-d0e0c22d,PL-4e2d7e2c");
+        String id1 = planId(plan1);
+        try {
+            audit(fixture, atlas, audit, "next", "R00000000T000000Z");
+            problems++;
+            System.out.println("AUDIT next accepted a plan id that is not the current plan");
+        } catch (IllegalArgumentException expectedRefusal) {
+            // The refusal is the check.
+        }
+        String batch1 = batchOf(audit(fixture, atlas, audit, "next", id1));
+        Files.createDirectories(audit.resolve("drafts"));
+        Files.copy(expected.resolve("draft-ok.jsonl"), audit.resolve("drafts").resolve(batch1 + ".jsonl"));
+        audit(fixture, atlas, audit, "record", batch1);
+        Map<String, Map<String, Object>> places = byKey(audit.resolve("places.jsonl"), "placeId");
+        problems += expectPlace(places, "PL-2ba53763", "CONFIRMED", "CURRENT", null);
+        problems += expectPlace(places, "PL-55683365", "CONFIRMED", "CURRENT", null);
+        problems += expectPlace(places, "PL-99da8683", "CONFIRMED", "CURRENT", null);
+        problems += expectPlace(places, "PL-a39aeb08", "MITIGATED", "CURRENT", null);
+        problems += expectPlace(places, "PL-d0e0c22d", "REFUTED", "CURRENT", null);
+        problems += expectPlace(places, "PL-4e2d7e2c", null, "UNJUDGED", "partial");
+        if (places.containsKey("PL-55683365") && !"MEDIUM".equals(places.get("PL-55683365").get("confidence"))) {
+            problems++;
+            System.out.println("AUDIT a NOT_CHECKED mitigation did not cap HIGH confidence at MEDIUM");
+        }
+        Map<String, Map<String, Object>> stored = byKey(audit.resolve("places").resolve(batch1 + ".jsonl"), "placeId");
+        problems += expectOpened(stored, "PL-a39aeb08", List.of("src/main/java/com/acme/care/billing/persistence/EventReceipt.java"));
+        problems += expectOpened(stored, "PL-2ba53763", List.of());
+        Map<String, String> idBySymbol = new HashMap<>();
+        for (String line : Files.readAllLines(atlas.resolve("entrypoints.jsonl"), StandardCharsets.UTF_8)) {
+            if (!line.isBlank()) {
+                Map<String, Object> r = Json.parseObject(line);
+                idBySymbol.put(Query.symbol(String.valueOf(r.get("cls")), String.valueOf(r.get("method"))), String.valueOf(r.get("id")));
+            }
+        }
+        Map<String, Map<String, Object>> verdicts = byKey(audit.resolve("verdicts.jsonl"), "id");
+        problems += expectVerdict(verdicts, idBySymbol.get("BillingWebhookController.receiveStripeEvent"), "RED");
+        problems += expectVerdict(verdicts, idBySymbol.get("PatternsController.txTemplate"), "GREEN");
+        problems += expectVerdict(verdicts, idBySymbol.get("PatternsController.fire"), null);
+        if (!Files.exists(audit.getParent().resolve("backlog.md"))
+                || !Files.readString(audit.getParent().resolve("backlog.md"), StandardCharsets.UTF_8).contains("PL-2ba53763")) {
+            problems++;
+            System.out.println("AUDIT backlog.md does not list the confirmed place PL-2ba53763");
+        }
+
+        String id2 = planId(audit(fixture, atlas, audit, "plan", "--places", "PL-4e2d7e2c,PL-076fa0b4,PL-828ebd1f,PL-711bd529,PL-77298363"));
+        String batch2 = batchOf(audit(fixture, atlas, audit, "next", id2));
+        Files.copy(expected.resolve("draft-bad.jsonl"), audit.resolve("drafts").resolve(batch2 + ".jsonl"));
+        audit(fixture, atlas, audit, "record", batch2);
+        Map<String, Map<String, Object>> bad = byKey(audit.resolve("places").resolve(batch2 + ".jsonl"), "placeId");
+        problems += expectRejected(bad, "PL-4e2d7e2c", "MISMATCH");
+        problems += expectRejected(bad, "PL-076fa0b4", "lacks");
+        problems += expectRejected(bad, "PL-828ebd1f", "BROKEN");
+        problems += expectRejected(bad, "PL-711bd529", "needs");
+        problems += expectRejected(bad, "PL-77298363", "sets tier");
+
+        String id3 = planId(audit(fixture, atlas, audit, "plan", "--places", "PL-d03c7988"));
+        String batch3 = batchOf(audit(fixture, atlas, audit, "next", id3));
+        audit(fixture, atlas, audit, "record", batch3);
+        problems += expectPlace(byKey(audit.resolve("places.jsonl"), "placeId"), "PL-d03c7988", null, "UNJUDGED", "no-draft");
+
+        Path fresh = Files.createTempDirectory("audit-golden-plan").resolve("audit");
+        audit(fixture, atlas, fresh, "plan", "--model", "haiku");
+        Map<String, Object> plan = Json.parseObject(Files.readString(fresh.resolve("plan.json"), StandardCharsets.UTF_8));
+        int tokens = 0;
+        for (Object b : (List<?>) plan.get("batches")) {
+            tokens += ((Number) ((Map<?, ?>) b).get("bodyTokens")).intValue();
+        }
+        String got = String.join("\t", String.valueOf(((List<?>) plan.get("places")).size()), String.valueOf(((List<?>) plan.get("batches")).size()),
+                String.valueOf(tokens), String.format(java.util.Locale.ROOT, "%.2f", ((Number) ((Map<?, ?>) plan.get("estimate")).get("usd")).doubleValue()));
+        List<String> pinned = Files.readAllLines(expected.resolve("plan.tsv"), StandardCharsets.UTF_8);
+        if (pinned.size() < 2 || !pinned.get(1).strip().equals(got)) {
+            problems++;
+            System.out.println("AUDIT plan (places, batches, packet tokens, usd) expected " + (pinned.size() < 2 ? "?" : pinned.get(1).strip()) + " got " + got);
+        }
+        return problems;
+    }
+
+    private static String audit(Path fixture, Path atlas, Path audit, String... args) throws Exception {
+        String[] argv = new String[args.length + 1];
+        argv[0] = "audit";
+        System.arraycopy(args, 0, argv, 1, args.length);
+        return Audit.run(fixture, atlas, audit, new Args(argv));
+    }
+
+    private static String planId(String planOutput) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("--yes (R\\d{8}T\\d{6}Z)").matcher(planOutput);
+        if (!m.find()) {
+            throw new IllegalStateException("audit plan printed no plan id:\n" + planOutput);
+        }
+        return m.group(1);
+    }
+
+    private static String batchOf(String nextOutput) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\tbatch\t(B-\\S+)").matcher(nextOutput);
+        if (!m.find()) {
+            throw new IllegalStateException("audit next issued no batch:\n" + nextOutput);
+        }
+        return m.group(1);
+    }
+
+    private static Map<String, Map<String, Object>> byKey(Path jsonl, String key) throws Exception {
+        Map<String, Map<String, Object>> out = new HashMap<>();
+        if (Files.exists(jsonl)) {
+            for (String line : Files.readAllLines(jsonl, StandardCharsets.UTF_8)) {
+                if (!line.isBlank()) {
+                    Map<String, Object> r = Json.parseObject(line);
+                    out.put(String.valueOf(r.get(key)), r);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static int expectPlace(Map<String, Map<String, Object>> places, String id, String verdict, String status, String reason) {
+        Map<String, Object> p = places.get(id);
+        if (p == null || !java.util.Objects.equals(verdict, p.get("verdict")) || !status.equals(p.get("status"))
+                || reason != null && !reason.equals(p.get("reason"))) {
+            System.out.println("AUDIT PLACE " + id + " expected " + verdict + "/" + status + (reason == null ? "" : "/" + reason) + " got "
+                    + (p == null ? "nothing" : p.get("verdict") + "/" + p.get("status") + "/" + p.get("reason")));
+            return 1;
+        }
+        return 0;
+    }
+
+    private static int expectOpened(Map<String, Map<String, Object>> rows, String id, List<String> files) {
+        Object got = rows.containsKey(id) ? rows.get(id).get("openedFiles") : null;
+        if (!files.equals(got)) {
+            System.out.println("AUDIT OPENED " + id + " expected " + files + " got " + got);
+            return 1;
+        }
+        return 0;
+    }
+
+    private static int expectVerdict(Map<String, Map<String, Object>> verdicts, String opId, String colour) {
+        Map<String, Object> v = verdicts.get(opId);
+        boolean ok = colour == null ? v == null : v != null && colour.equals(v.get("colour")) && Boolean.TRUE.equals(v.get("triage"));
+        if (!ok) {
+            System.out.println("AUDIT VERDICT " + opId + " expected " + colour + " got " + (v == null ? "no row" : v.get("colour")));
+            return 1;
+        }
+        return 0;
+    }
+
+    private static int expectRejected(Map<String, Map<String, Object>> rows, String id, String problem) {
+        Map<String, Object> r = rows.get(id);
+        boolean ok = r != null && "UNJUDGED".equals(r.get("status")) && "rejected".equals(r.get("reason"))
+                && String.valueOf(r.get("problems")).contains(problem);
+        if (!ok) {
+            System.out.println("AUDIT REJECT " + id + " expected rejected for '" + problem + "' got "
+                    + (r == null ? "nothing" : r.get("status") + "/" + r.get("reason") + " " + r.get("problems")));
+            return 1;
+        }
+        return 0;
     }
 
     /**

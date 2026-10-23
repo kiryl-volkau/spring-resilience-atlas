@@ -35,7 +35,11 @@ public final class EvidenceVerifier {
     public record Result(String report, boolean passed) {
     }
 
+    /** The outcome for one evidence object. */
+    public enum Check { OK, MISMATCH, TRIVIAL, MALFORMED, MISSING_FILE }
+
     private static final int WINDOW = 2;
+    private static final String BOM = String.valueOf((char) 0xFEFF);
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]{2,}");
     private static final Set<String> KEYWORDS = Set.of("abstract", "boolean", "break", "byte", "case", "catch", "char",
             "class", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for",
@@ -50,11 +54,46 @@ public final class EvidenceVerifier {
         this.repo = repo;
     }
 
+    /**
+     * Checks one {@code {file, line, snippet}} object: the snippet, whitespace-normalised, must occur
+     * within two lines of {@code line} in the working tree and contain a non-keyword identifier.
+     * Never throws for bad input; a missing or mistyped field is {@link Check#MALFORMED}.
+     */
+    public Check check(Map<?, ?> evidence) throws IOException {
+        if (!(evidence.get("file") instanceof String file) || !(evidence.get("line") instanceof Number n) || n.intValue() < 1
+                || !(evidence.get("snippet") instanceof String snippet)) {
+            return Check.MALFORMED;
+        }
+        if (!meaningful(snippet)) {
+            return Check.TRIVIAL;
+        }
+        List<String> lines = lines(file);
+        if (lines == null) {
+            return Check.MISSING_FILE;
+        }
+        int line = n.intValue();
+        StringBuilder window = new StringBuilder();
+        for (int i = Math.max(1, line - WINDOW); i <= Math.min(lines.size(), line + WINDOW); i++) {
+            window.append(lines.get(i - 1)).append(' ');
+        }
+        return normalize(window.toString()).contains(normalize(snippet)) ? Check.OK : Check.MISMATCH;
+    }
+
     public Result verify(Path document) throws IOException {
-        String text = Files.readString(document, StandardCharsets.UTF_8).trim();
+        String text = Files.readString(document, StandardCharsets.UTF_8);
+        if (text.startsWith(BOM)) {
+            text = text.substring(1);
+        }
+        text = text.trim();
         List<Object> roots = new ArrayList<>();
-        if (text.startsWith("[") || (text.startsWith("{") && !text.contains("}\n{"))) {
-            roots.add(Json.parse(text));
+        Object whole = null;
+        try {
+            whole = Json.parse(text);
+        } catch (IllegalArgumentException jsonLines) {
+            // One JSON value per line: parsed line by line below.
+        }
+        if (whole != null) {
+            roots.add(whole);
         } else {
             for (String line : text.split("\\R")) {
                 if (!line.isBlank()) {
@@ -79,26 +118,20 @@ public final class EvidenceVerifier {
             String file = (String) e.get("file");
             int line = ((Number) e.get("line")).intValue();
             String snippet = (String) e.get("snippet");
-            if (!meaningful(snippet)) {
-                trivial++;
-                out.append("TRIVIAL\t").append(file).append(':').append(line).append('\t').append(shown(snippet)).append('\n');
-                continue;
-            }
-            List<String> lines = lines(file);
-            if (lines == null) {
-                missing++;
-                out.append("MISSING_FILE\t").append(file).append(':').append(line).append('\n');
-                continue;
-            }
-            StringBuilder window = new StringBuilder();
-            for (int i = Math.max(1, line - WINDOW); i <= Math.min(lines.size(), line + WINDOW); i++) {
-                window.append(lines.get(i - 1)).append(' ');
-            }
-            if (normalize(window.toString()).contains(normalize(snippet))) {
-                ok++;
-            } else {
-                mismatched++;
-                out.append("MISMATCH\t").append(file).append(':').append(line).append('\t').append(shown(snippet)).append('\n');
+            switch (check(e)) {
+                case OK -> ok++;
+                case TRIVIAL -> {
+                    trivial++;
+                    out.append("TRIVIAL\t").append(file).append(':').append(line).append('\t').append(shown(snippet)).append('\n');
+                }
+                case MISSING_FILE -> {
+                    missing++;
+                    out.append("MISSING_FILE\t").append(file).append(':').append(line).append('\n');
+                }
+                default -> {
+                    mismatched++;
+                    out.append("MISMATCH\t").append(file).append(':').append(line).append('\t').append(shown(snippet)).append('\n');
+                }
             }
         }
         if (items.isEmpty()) {
@@ -186,7 +219,7 @@ public final class EvidenceVerifier {
             } catch (CharacterCodingException e) {
                 text = new String(bytes, Charset.isSupported("windows-1251") ? Charset.forName("windows-1251") : StandardCharsets.ISO_8859_1);
             }
-            lines = text.lines().toList();
+            lines = (text.startsWith(BOM) ? text.substring(1) : text).lines().toList();
         }
         cache.put(file, lines);
         return lines;

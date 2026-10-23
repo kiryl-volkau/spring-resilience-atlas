@@ -104,6 +104,32 @@ public final class Scanner {
         return new Summary(manifest, entryPoints.size());
     }
 
+    /**
+     * SHA-256 over the path and content hash of every main-source file the scan reads, sorted by
+     * path: equal values mean the atlas was built from exactly these sources, whatever git says.
+     * An unreadable file contributes its path only.
+     */
+    public static String sourcesHash(Workspace ws) {
+        try {
+            MessageDigest all = MessageDigest.getInstance("SHA-256");
+            List<Workspace.SourceEntry> sorted = new ArrayList<>(ws.sources);
+            sorted.sort(Comparator.comparing(Workspace.SourceEntry::relPath));
+            for (Workspace.SourceEntry e : sorted) {
+                all.update(e.relPath().getBytes(StandardCharsets.UTF_8));
+                all.update((byte) 0);
+                try {
+                    all.update(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(e.path())));
+                } catch (IOException unreadable) {
+                    all.update((byte) 1);
+                }
+                all.update((byte) '\n');
+            }
+            return HexFormat.of().formatHex(all.digest());
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static void assignIds(List<EntryPoint> eps) throws Exception {
         MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
         Map<String, Integer> occurrences = new HashMap<>();
@@ -187,6 +213,7 @@ public final class Scanner {
         files.put("generated", generated);
         files.put("parseFailures", parsed.failed().size());
         m.put("files", files);
+        m.put("sourcesHash", sourcesHash(ws));
         Map<String, Integer> counts = new TreeMap<>();
         Map<String, Integer> statuses = new TreeMap<>();
         for (EntryPoint e : eps) {

@@ -12,3 +12,4 @@ VIEW:save	ResidentAccountPortlet.saveAccount	in-memory-state
 /api/patterns/tx-template	PatternsController.txTemplate	transactional,db-write@tx,message-send@tx	
 /api/patterns/overload	PatternsController.overload	self-invocation,external-call	async-handoff
 /api/patterns/fire	PatternsController.fire	async-handoff	
+/api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	transactional,db-write@tx	idempotency-check,message-send,async-handoff

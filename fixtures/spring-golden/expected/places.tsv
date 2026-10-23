@@ -1,0 +1,16 @@
+rule	file	symbol	level	operations
+async-in-tx	src/main/java/com/acme/care/billing/service/StripeWebhookService.java	StripeWebhookService.handle	HIGH	BillingWebhookController.receiveStripeEvent
+async-listener	src/main/java/com/acme/care/crm/schedule/CrmSyncService.java	CrmSyncService.onContactMerged	MEDIUM	CrmSyncService.onContactMerged
+async-listener	src/main/java/com/acme/care/resident/events/BedReleaseListener.java	BedReleaseListener.onResidentDischarged	MEDIUM	BedReleaseListener.onResidentDischarged
+consumer-not-idempotent	src/main/java/com/acme/care/billing/service/InvoiceService.java	InvoiceService.createInvoiceFromProviderEvent	MEDIUM	InvoiceEventListener.onInvoiceEvent
+dual-write	src/main/java/com/acme/care/shared/patterns/PatternAuditService.java	PatternAuditService.recordAndPublishAfterCommit	MEDIUM	PatternsController.afterCommit,PatternsController.fire,PatternsController.pumped
+dual-write-in-tx	src/main/java/com/acme/care/billing/service/StripeWebhookService.java	StripeWebhookService.handle	HIGH	BillingWebhookController.receiveStripeEvent
+dual-write-in-tx	src/main/java/com/acme/care/shared/patterns/PatternsController.java	PatternsController.txTemplate	HIGH	PatternsController.txTemplate
+handoff-after-ack	src/main/java/com/acme/care/billing/service/StripeWebhookService.java	StripeWebhookService.handle	HIGH	BillingWebhookController.receiveStripeEvent
+handoff-after-ack	src/main/java/com/acme/care/shared/patterns/PatternsController.java	PatternsController.fire	HIGH	PatternsController.fire
+in-memory-state	src/main/java/com/acme/care/dailycare/monitoring/WardSensorHeartbeat.java	WardSensorHeartbeat.startFor	MEDIUM	WardSensorHeartbeat.startFor
+proxy-bypassed	src/main/java/com/acme/care/shared/patterns/ResidentNotifier.java	ResidentNotifier.notifyResident	MEDIUM	PatternsController.overload
+remote-in-tx	src/main/java/com/acme/care/billing/client/PaymentProviderClient.java	PaymentProviderClient.createCharge	MEDIUM	InvoiceEventListener.onInvoiceEvent
+shared-field-write	src/main/java/com/acme/care/legacy/portlet/ResidentAccountPortlet.java	ResidentAccountPortlet.saveAccount	MEDIUM	ResidentAccountPortlet.saveAccount
+webhook-not-idempotent	src/main/java/com/acme/care/billing/service/StripeWebhookService.java	StripeWebhookService.handle	MEDIUM	BillingWebhookController.receiveStripeEvent
+webhook-not-idempotent	src/main/java/com/acme/care/billing/service/PaypalWebhookService.java	PaypalWebhookService.handle	MEDIUM	PaypalWebhookController.receivePaypalEvent

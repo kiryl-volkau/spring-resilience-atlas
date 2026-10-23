@@ -187,3 +187,4 @@ HTTP	POST	/api/patterns/wrapped	PatternsController.wrapped	STATIC
 HTTP	POST	/api/dailycare/notes/{noteId}/attachments	CareNoteController.attach	INFERRED
 HTTP	GET	/api/dailycare/activities/{residentId}	ActivityLogController.listActivities	INFERRED
 MESSAGING	KAFKA	care.dailycare.activities	ActivityEventListener.onActivityRecorded	INFERRED
+HTTP	POST	/api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	STATIC

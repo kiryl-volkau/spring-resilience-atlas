@@ -240,7 +240,7 @@ public final class JavaSourceParser {
     }
 
     /** Reads UTF-8, falling back to windows-1251 or ISO-8859-1 so legacy encodings still parse. */
-    static String readSource(Workspace.SourceEntry e) throws IOException {
+    public static String readSource(Workspace.SourceEntry e) throws IOException {
         byte[] bytes = Files.readAllBytes(e.path());
         String text;
         try {
@@ -392,7 +392,7 @@ public final class JavaSourceParser {
                 body = new MethodDecl.Body(scanner.sites, scanner.locals, scanner.assignments);
             }
             boolean isPublic = flags.contains(Modifier.PUBLIC) || (inInterface && !flags.contains(Modifier.PRIVATE));
-            return new MethodDecl(mt.getName().toString(), annos(mt.getModifiers()), line(mt), returnType, params,
+            return new MethodDecl(mt.getName().toString(), annos(mt.getModifiers()), line(mt), endLine(mt), returnType, params,
                     isPublic, flags.contains(Modifier.PRIVATE), flags.contains(Modifier.STATIC), mt.getBody() != null,
                     mt.getDefaultValue() == null ? null : expr(mt.getDefaultValue()), calls, new ArrayList<>(newTypes),
                     routes, fromCalls, permitAll, body);
@@ -864,6 +864,11 @@ public final class JavaSourceParser {
         private int line(Tree t) {
             long pos = positions.getStartPosition(cu, t);
             return pos < 0 ? 0 : (int) cu.getLineMap().getLineNumber(pos);
+        }
+
+        private int endLine(Tree t) {
+            long pos = positions.getEndPosition(cu, t);
+            return pos <= 0 ? 0 : (int) cu.getLineMap().getLineNumber(pos - 1);
         }
     }
 

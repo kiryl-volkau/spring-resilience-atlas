@@ -34,8 +34,12 @@ Reply in a few lines, in the user's language:
 - the blind spots from the `# blind spot:` lines, one short clause each;
 - one sentence on what the levels mean. A level is a static hint computed from the code
   path: it says where to look first. It is not a verdict that something is broken. Statuses
-  such as Broken, Smells and OK appear only after an audit has traced a flow.
-- the next step: trace the top operation with the `critical-flow-tracer` skill.
+  such as Broken, Smells and OK appear only after an audit.
+- if the `# audit` line shows results, relay its counts. Smells there are mostly places the
+  quick check suspects, not verified defects; "checked (quick)" is not "safe". Mention
+  `.reliability/backlog.md` when the line shows suspected places.
+- the next step: `/resilience-audit:audit` checks the hints with a cheap model and prints its
+  cost before spending anything; the `critical-flow-tracer` skill traces one operation in depth.
 
 If the command fails:
 

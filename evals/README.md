@@ -50,6 +50,20 @@ Cases:
 | `entrypoint-catalog-sqs-consumers` | SQS consumers come from atlas queries, programmatic polling included, with no tree grep |
 | `critical-flow-tracer-billing-webhook` | a flow file is written and every evidence line verifies |
 | `report-builds-page` | the page comes from the scanner's `report` command, the Stripe webhook ranks first, and levels are not called verdicts |
+| `audit-plans-without-spending` | asked to check the hints, the `audit` skill only plans: it prints the cost and the `--yes` command and starts no agent |
+| `audit-billing-places` | one message plans and runs the quick check of the billing package under a limit; the seeded defects come out CONFIRMED, the PayPal false positive REFUTED or MITIGATED, and no file under `src/` changes |
+| `audit-everything-golden` | the same for every place; the ledger says COMPLETE and names what was not covered |
+| `report-shows-verdicts` | with a recorded quick check restored, the report's reply keeps suspected apart from verified |
+
+`--tag layer2` runs the four quick-check cases. Their seeds restore `expected/audit/places-sample/`
+or build the atlas. The verdicts each seed should produce are in
+`fixtures/spring-golden/expected/audit/verdicts-expected.tsv`.
+
+The golden test also runs the quick check's mechanical half without a model. The hypothesis
+catalogue must cover every rule. `audit plan`, `next` and `record` must handle
+`expected/audit/draft-ok.jsonl`, `draft-bad.jsonl` (both with a BOM and CRLF) and a missing
+draft as `audit/AuditStore` and `audit/Record` define. The full plan's size and estimate must
+match `expected/audit/plan.tsv`.
 
 ## Smoke test on Windows
 
@@ -83,6 +97,17 @@ Results on a Spring Boot 3 application from the local corpus, 2026-10-22 (1.4k J
 | `entrypoint-catalog`, same question | Haiku 5.5 | 0.016 | 3 | 27 |
 | `domain-cartographer` | Sonnet 5.5 | 0.32 | 13 | 47 |
 | `critical-flow-tracer`, Stripe webhook, 33/33 evidence verified | Opus 5.5 | 0.99 | — | 190 |
+
+The quick check on the golden fixture, 2026-10-23, `claude -p` with `--plugin-dir` on Windows:
+
+| Run | Model | USD | Turns |
+|---|---|---|---|
+| `audit`, plan only (15 places, 2 batches; estimate $0.03 + $0.01 for the skill's turns) | Haiku 5.5 | 0.007 | 2 |
+| `audit --yes <id>`, 2 `place-checker` agents, 15 places judged, 0 unjudged | Haiku 5.5 | 0.039 | 8 |
+
+These runs calibrated `audit/Plan.java`. A checker's own context is about 30k tokens before
+the packet, and it writes about 2.4k tokens per place, thinking included. Sub-agents write the
+prompt cache at 1.25 times the input price, and the main session at 2 times.
 
 About 34k tokens of every run are the session's base context (system prompt, the user's
 installed plugins, the project's CLAUDE.md). The plugin itself adds about 300 tokens of skill

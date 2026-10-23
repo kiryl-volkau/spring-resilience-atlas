@@ -52,46 +52,11 @@ public final class Query {
     }
 
     private void entrypoints() throws IOException {
-        List<Map<String, Object>> rows = new ArrayList<>();
+        List<Map<String, Object>> rows = EntryPointFilter.rows(atlas);
         boolean hasDomains = !atlas.domains().isEmpty();
-        for (Map<String, Object> r : atlas.entrypoints()) {
-            Map<String, Object> row = new LinkedHashMap<>(r);
-            row.put("symbol", symbol(str(r, "cls"), str(r, "method")));
-            row.put("loc", str(r, "file") + ":" + r.get("line"));
-            if (hasDomains) {
-                String d = atlas.domainOf(str(r, "cls"));
-                row.put("domain", d == null ? "(unassigned)" : d);
-            }
-            rows.add(row);
-        }
-        Map<String, String> applied = new LinkedHashMap<>();
-        Predicate<Map<String, Object>> filter = r -> true;
-        filter = filter.and(exactAny("kind", "kind", applied));
-        filter = filter.and(containsAny("subkind", "subkind", applied));
-        filter = filter.and(prefix("module", "module", applied));
-        filter = filter.and(prefix("package", "cls", applied));
-        filter = filter.and(contains("class", "symbol", applied));
-        filter = filter.and(contains("target", "target", applied));
-        filter = filter.and(prefix("path-prefix", "target", applied));
-        filter = filter.and(exactAny("status", "status", applied));
-        filter = filter.and(exactAny("origin", "origin", applied));
-        filter = filter.and(contains("via", "via", applied));
-        filter = filter.and(contains("file", "file", applied));
-        if (args.get("domain") != null && !hasDomains) {
-            throw new IllegalArgumentException("--domain needs domains.jsonl; run the domain-cartographer skill first, or filter by --package");
-        }
-        filter = filter.and(exactAny("domain", "domain", applied));
-        String tag = args.get("tag");
-        if (tag != null) {
-            applied.put("tag", tag);
-            Set<String> verdicts = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            for (String t : tag.split(",")) {
-                verdicts.add(t.trim().replace('-', '_'));
-            }
-            filter = filter.and(r -> r.get("attrs") instanceof Map<?, ?> attrs && attrs.get("webhook") instanceof Map<?, ?> w
-                    && verdicts.contains(String.valueOf(w.get("verdict"))));
-        }
-        List<Map<String, Object>> matched = rows.stream().filter(filter).toList();
+        EntryPointFilter f = EntryPointFilter.of(args, hasDomains);
+        Map<String, String> applied = f.applied();
+        List<Map<String, Object>> matched = rows.stream().filter(f.predicate()).toList();
 
         String groupBy = args.get("group-by");
         if (groupBy != null) {
@@ -406,51 +371,15 @@ public final class Query {
     }
 
     private Predicate<Map<String, Object>> exactAny(String flag, String field, Map<String, String> applied) {
-        String v = args.get(flag);
-        if (v == null) {
-            return r -> true;
-        }
-        applied.put(flag, v);
-        Set<String> wanted = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        wanted.addAll(List.of(v.split(",")));
-        return r -> wanted.contains(cell(r.get(field)));
+        return EntryPointFilter.exactAny(args, flag, field, applied);
     }
 
     private Predicate<Map<String, Object>> contains(String flag, String field, Map<String, String> applied) {
-        String v = args.get(flag);
-        if (v == null) {
-            return r -> true;
-        }
-        String needle = normalizeMsysPath(v);
-        applied.put(flag, needle);
-        String lower = needle.toLowerCase(Locale.ROOT);
-        return r -> cell(r.get(field)).toLowerCase(Locale.ROOT).contains(lower);
-    }
-
-    private Predicate<Map<String, Object>> containsAny(String flag, String field, Map<String, String> applied) {
-        String v = args.get(flag);
-        if (v == null) {
-            return r -> true;
-        }
-        applied.put(flag, v);
-        List<String> needles = new ArrayList<>();
-        for (String n : v.split(",")) {
-            needles.add(n.trim().toLowerCase(Locale.ROOT));
-        }
-        return r -> {
-            String value = cell(r.get(field)).toLowerCase(Locale.ROOT);
-            return needles.stream().anyMatch(value::contains);
-        };
+        return EntryPointFilter.contains(args, flag, field, applied);
     }
 
     private Predicate<Map<String, Object>> prefix(String flag, String field, Map<String, String> applied) {
-        String v = args.get(flag);
-        if (v == null) {
-            return r -> true;
-        }
-        String p = normalizeMsysPath(v);
-        applied.put(flag, p);
-        return r -> cell(r.get(field)).startsWith(p);
+        return EntryPointFilter.prefix(args, flag, field, applied);
     }
 
     /**
@@ -551,7 +480,7 @@ public final class Query {
         return segs.length <= depth ? pkg : String.join(".", java.util.Arrays.copyOfRange(segs, 0, depth));
     }
 
-    private static String cell(Object v) {
+    static String cell(Object v) {
         if (v == null) {
             return "";
         }

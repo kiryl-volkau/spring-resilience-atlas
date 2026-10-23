@@ -1,5 +1,6 @@
 package studio.volkoff.atlas;
 
+import studio.volkoff.atlas.audit.Audit;
 import studio.volkoff.atlas.query.Args;
 import studio.volkoff.atlas.query.AtlasStore;
 import studio.volkoff.atlas.query.EvidenceVerifier;
@@ -38,6 +39,11 @@ public final class Main {
               domains                      domains from domains.jsonl with entry-point counts
               verify-evidence <file>       check {file,line,snippet} evidence in a flow or finding document; exit 1 on any problem
               doc <name>                   print a bundled reference: atlas-cli.md, entrypoint-rules.md, *.schema.json
+              audit plan [filters]         plan the quick check of the report's places; prints the estimate, spends nothing
+                  --places PL-a,PL-b  --ops EP-a  --rule CODE  --level HIGH,MEDIUM  any entrypoints filter
+                  --model haiku|sonnet|opus|fable  --batch N (8)  --max-usd X  --waves N (12)  --include-current  --audit DIR
+              audit next <plan-id> [--batches N]   issue the next packets of that plan, or say why it stopped
+              audit record <batch-id>      store the checker's draft for a batch as verdicts; rebuilds the derived files
 
             common: --repo DIR  --atlas DIR  --format tsv|jsonl|count  --fields a,b|+c|all  --limit N (50, max 500)  --offset N
             """;
@@ -70,6 +76,8 @@ public final class Main {
                         out.println(open(outFile));
                     }
                 }
+                case "audit" -> out.print(Audit.run(repo, atlasDir, args.get("audit") != null ? Path.of(args.get("audit")).toAbsolutePath().normalize()
+                        : repo.resolve(".reliability").resolve("audit"), args));
                 case "doc" -> out.print(doc(args.positional.isEmpty() ? null : args.positional.get(0)));
                 case "verify-evidence" -> {
                     if (args.positional.isEmpty()) {
@@ -93,7 +101,7 @@ public final class Main {
     }
 
     private static final List<String> DOCS = List.of("atlas-cli.md", "not-in-atlas.md", "entrypoint-rules.md", "entrypoint.schema.json",
-            "domain.schema.json", "flow.schema.json", "finding.schema.json");
+            "domain.schema.json", "flow.schema.json", "finding.schema.json", "place-verdict.schema.json");
 
     private static String doc(String name) throws java.io.IOException {
         if (name == null || !DOCS.contains(name)) {
@@ -123,7 +131,9 @@ public final class Main {
             out.append("# audit: not run; every operation is \"not audited\" (attention levels are static hints, not verdicts)\n");
         } else {
             out.append("# audit ").append(s.auditStatus()).append(": broken ").append(c.get("RED")).append(", smells ")
-                    .append(c.get("YELLOW")).append(", ok ").append(c.get("GREEN")).append(", not audited ").append(c.get("GREY")).append('\n');
+                    .append(c.get("YELLOW")).append(", ok ").append(c.get("GREEN") - s.checkedQuick()).append(", checked (quick) ")
+                    .append(s.checkedQuick()).append(", not audited ").append(c.get("GREY"))
+                    .append(" (smells includes triage suspicions waiting for a deep audit)").append('\n');
         }
         if (!s.top().isEmpty()) {
             out.append("rank\tlevel\tid\tkind\ttarget\thandler\tfirst pattern\n");

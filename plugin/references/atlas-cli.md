@@ -45,7 +45,19 @@ Read the count line before paging. When a query matches hundreds of rows, narrow
 | `packages [--depth N]` | Package tree with type and entry-point counts |
 | `domains` | Domains from `domains.jsonl`, with entry-point counts |
 | `verify-evidence <file>` | Check every `{file, line, snippet}` in a flow or finding document against the working tree. Exits 1 and prints `FAILED` on any `MISMATCH`, `MALFORMED`, `TRIVIAL` or `MISSING_FILE` line, on a hop or boundary without evidence, or when there is no evidence at all |
-| `doc <name>` | Print a bundled reference: `atlas-cli.md`, `not-in-atlas.md`, `entrypoint-rules.md`, `entrypoint`/`domain`/`flow`/`finding` `.schema.json` |
+| `doc <name>` | Print a bundled reference: `atlas-cli.md`, `not-in-atlas.md`, `entrypoint-rules.md`, `entrypoint`/`domain`/`flow`/`finding`/`place-verdict` `.schema.json` |
+| `audit plan [filters]` | Plan the quick check of the report's places (a rule code at the method enclosing its evidence; HIGH and MEDIUM only). Rescans when the sources changed, skips places with a current verdict, writes `.reliability/audit/plan.json` and prints the places, the estimate in tokens and USD, the caps and the plan id. Spends nothing |
+| `audit next <plan-id> [--batches N]` | Issue the next N batches (default 4) of that plan: write their evidence packets and count their estimate as spent. Exits 2 when the sources, the atlas or the store changed since the plan; prints `stoppedBecause: done\|usd\|waves` when nothing more may be issued |
+| `audit record <batch-id>` | Validate the checker's draft for a batch, verify its evidence, store one row per place (`places/<batch>.jsonl`; UNJUDGED with a reason when a row is missing or rejected) and rebuild `places.jsonl`, `verdicts.jsonl`, `coverage.json` and `.reliability/backlog.md`. Never fails for a bad draft |
+
+`audit plan` filters: `--places PL-a,PL-b`, `--ops EP-a,EP-b`, `--rule CODE`, `--level HIGH,MEDIUM`,
+and every entry-point filter below (a place is in scope when any of its operations matches).
+Options: `--model haiku|sonnet|opus|fable` (default haiku), `--batch N` places per batch
+(default 8), `--max-usd X` (default twice the estimate), `--waves N` (default 12),
+`--include-current` (re-check places that already have a current quick-check verdict), and
+`--audit DIR` (default `.reliability/audit`). A verdict goes stale when the method around its
+evidence, the effects the rule cited, the mitigation signals on the path or a file the checker
+opened change.
 
 ## Entry-point filters
 

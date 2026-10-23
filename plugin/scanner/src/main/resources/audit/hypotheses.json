@@ -1,0 +1,279 @@
+{
+  "about": "One entry per rule code of Risk.RULES. The quick check reads the in-scope entries: a hypothesis, the questions that decide it, and the named mitigations a verdict must report on. Reliability wording only.",
+  "rules": {
+    "handoff-after-ack": {
+      "inScope": true,
+      "hypothesis": "Work is handed to an in-process thread after the caller gets its answer; a restart loses it and nobody retries.",
+      "check": "Does the submitted work matter to the business (not a notification or a metric)? Is the caller answered before the work is durable? Does anything re-derive the work later?",
+      "mitigations": [
+        {"name": "future joined before response", "kind": "refutes", "text": "the future is joined or awaited before the response is returned"},
+        {"name": "durable claim before fork", "kind": "refutes", "text": "the work was persisted with a claimable state before the submit, and a sweeper or scheduler picks it up"},
+        {"name": "persistent job runner", "kind": "refutes", "text": "the executor is a persistent job runner (db-scheduler, JobRunr, Quartz with a JDBC store)"},
+        {"name": "partial sweeper", "kind": "mitigates", "text": "a durable claim exists but the sweeper covers only part of the work"},
+        {"name": "best-effort by owner", "kind": "mitigates", "text": "the code states the work is best effort (a comment, a name or a log that says so)"}
+      ],
+      "cite": "the submit line; the line that answers the caller; the line that proves or disproves the durable claim",
+      "fix": "Persist the work as a pending row in the same transaction and let a scheduled sweeper process pending rows, or do the work before answering.",
+      "verify": "Stop the JVM between the response and the task; after a restart the work must still happen.",
+      "declares": ["quartz", "spring-modulith"]
+    },
+    "handoff-after-consume": {
+      "inScope": true,
+      "hypothesis": "The consumer hands work to an in-process thread and returns, so the message is acknowledged before the work is done; a restart loses it and the broker never redelivers.",
+      "check": "Does the forked work matter to the business? When is the message acknowledged (auto-ack on return, manual ack)? Does anything re-derive the work later?",
+      "mitigations": [
+        {"name": "ack after forked work", "kind": "refutes", "text": "the listener acknowledges manually only after the forked work completes"},
+        {"name": "durable claim before fork", "kind": "refutes", "text": "the work was persisted with a claimable state before the submit, and a sweeper picks it up"},
+        {"name": "partial sweeper", "kind": "mitigates", "text": "a durable claim exists but the sweeper covers only part of the work"}
+      ],
+      "cite": "the submit line; the listener method's return or ack; the line that proves or disproves a durable claim",
+      "fix": "Do the work on the listener thread before returning, or persist it as a pending row and process it with a sweeper.",
+      "verify": "Deliver a message and stop the JVM before the forked task runs; after a restart the work must still happen.",
+      "declares": ["spring-kafka", "sqs", "spring-rabbit", "spring-amqp", "spring-jms"]
+    },
+    "async-in-tx": {
+      "inScope": true,
+      "hypothesis": "A task is submitted before the transaction commits; it can run before the data is visible, or after a rollback for data that never existed.",
+      "check": "Does the forked task read or act on what this transaction writes? Can it run before the commit or after a rollback?",
+      "mitigations": [
+        {"name": "fork after commit", "kind": "refutes", "text": "the task is submitted from afterCommit, a TransactionSynchronization or an after-commit event listener"},
+        {"name": "task re-reads with retry", "kind": "refutes", "text": "the task carries only ids and re-reads the rows with a retry that waits for the commit"},
+        {"name": "tolerates missing row", "kind": "mitigates", "text": "the task tolerates a missing row by retrying, but still has external effects on rollback"}
+      ],
+      "cite": "the submit line; the @Transactional or transaction start; what the task reads",
+      "fix": "Submit the task after the commit (TransactionSynchronization.afterCommit or @TransactionalEventListener) and pass only ids.",
+      "verify": "Force a rollback after the submit; the task must not act on the rolled-back data.",
+      "declares": []
+    },
+    "dual-write-in-tx": {
+      "inScope": true,
+      "hypothesis": "A message is sent inside the database transaction, before the commit; if the commit fails, consumers already received a message about data that does not exist.",
+      "check": "Is the send inside the commit scope? What does a consumer do with a message whose data was rolled back? Can a retry of the caller send a second message?",
+      "mitigations": [
+        {"name": "send after commit", "kind": "refutes", "text": "the send happens in afterCommit or an after-commit event listener"},
+        {"name": "transactional outbox", "kind": "refutes", "text": "the message is written to an outbox table in the same transaction and relayed later"},
+        {"name": "event publication registry", "kind": "refutes", "text": "Spring Modulith's event publication registry persists the event with the transaction"},
+        {"name": "consumer idempotent on business key", "kind": "mitigates", "text": "the consumer ignores messages whose data does not exist or was already processed"}
+      ],
+      "cite": "the send line; the write line; the transaction boundary",
+      "fix": "Write the message to an outbox table in the same transaction and relay it after the commit, or send it from an after-commit hook.",
+      "verify": "Force the commit to fail after the send; no consumer may act on the message.",
+      "declares": ["spring-modulith"]
+    },
+    "dual-write": {
+      "inScope": true,
+      "hypothesis": "The database write and the message send are separate steps; a crash between them keeps one and loses the other.",
+      "check": "In which order do the write and the send happen? Who notices a lost message or a lost row? Is there a reconciliation?",
+      "mitigations": [
+        {"name": "transactional outbox", "kind": "refutes", "text": "the message is written to an outbox table with the data and relayed later"},
+        {"name": "change data capture", "kind": "refutes", "text": "messages are produced from the database log, not by this code"},
+        {"name": "idempotent write on redelivery", "kind": "refutes", "text": "the send comes first and the write is idempotent when the work is redelivered"},
+        {"name": "reconciliation job", "kind": "mitigates", "text": "a scheduled job compares the two sides and repairs differences"},
+        {"name": "consumer tolerates missing message", "kind": "mitigates", "text": "the consumer side re-derives state, so a lost message only delays it"}
+      ],
+      "cite": "the write line; the send line",
+      "fix": "Use a transactional outbox, or make one side re-derivable and reconcile it on a schedule.",
+      "verify": "Stop the JVM between the write and the send; the system must converge without manual repair.",
+      "declares": ["spring-modulith"]
+    },
+    "remote-in-tx": {
+      "inScope": true,
+      "hypothesis": "A remote call happens while a database transaction is open; a rollback afterwards cannot undo what the remote side did, and a slow provider holds connections.",
+      "check": "Is the call a read or an operation with effects? Is the transaction really open at the call? Is the remote effect reversed when the transaction rolls back?",
+      "mitigations": [
+        {"name": "call outside transaction", "kind": "refutes", "text": "the call actually runs outside the transaction (another proxy, REQUIRES_NEW ended, or no @Transactional on this path)"},
+        {"name": "read-only call with timeout", "kind": "refutes", "text": "the call only reads and has a short timeout"},
+        {"name": "compensation that reverses", "kind": "mitigates", "text": "a rollback triggers a compensation that undoes the remote effect, not one that only logs"},
+        {"name": "persisted intent", "kind": "mitigates", "text": "the intent is persisted before the call and a later step reconciles it"}
+      ],
+      "cite": "the remote call; the transaction boundary; the rollback handling",
+      "fix": "Move the remote call out of the transaction (before it, or after the commit with persisted intent), or add a compensation that really reverses it.",
+      "verify": "Force a rollback after the remote call succeeds; the remote side must end up consistent.",
+      "declares": []
+    },
+    "in-memory-state": {
+      "inScope": true,
+      "hypothesis": "Business state is kept in a collection or counter of a singleton bean; it is lost on restart and differs between replicas.",
+      "check": "Which business fact does the collection hold? Is it also stored durably? What happens on a restart or with a second replica?",
+      "mitigations": [
+        {"name": "durable copy", "kind": "refutes", "text": "the same fact is written to a durable store in the same method, or restored at startup"},
+        {"name": "cache with loader", "kind": "refutes", "text": "the collection is a cache with an expiry and a loader from a durable store"},
+        {"name": "restored on startup", "kind": "mitigates", "text": "the state is rebuilt at startup, but changes since the last write are lost"},
+        {"name": "single replica stated", "kind": "mitigates", "text": "the code states the application runs as one instance (recorded as an assumption)"}
+      ],
+      "cite": "the write to the collection; the durable write or its absence",
+      "fix": "Keep the state in the database or a shared store, and use memory only as a cache in front of it.",
+      "verify": "Restart the instance after a change; the state must survive.",
+      "declares": []
+    },
+    "shared-field-write": {
+      "inScope": true,
+      "hypothesis": "A request or message writes a field of a singleton bean; concurrent requests overwrite each other and the value differs between replicas.",
+      "check": "Is the field per-request data, or configuration set once? Can two requests interleave between the write and the read?",
+      "mitigations": [
+        {"name": "assigned once", "kind": "refutes", "text": "the field is assigned once from configuration or at startup"},
+        {"name": "request or session scope", "kind": "refutes", "text": "the bean is request-, session- or prototype-scoped"},
+        {"name": "synchronized local use", "kind": "mitigates", "text": "writes and reads are synchronized and the value is only used within the same call"}
+      ],
+      "cite": "the field write; the bean's scope declaration",
+      "fix": "Keep per-request data in local variables or method parameters, not in fields of a singleton.",
+      "verify": "Send two concurrent requests with different data; each must see only its own.",
+      "declares": []
+    },
+    "http-session": {
+      "inScope": true,
+      "hypothesis": "Data lives in the in-memory HTTP session; users lose it on a restart or when routed to another replica.",
+      "check": "What is stored in the session? What happens when it is missing on another replica?",
+      "mitigations": [
+        {"name": "spring session", "kind": "refutes", "text": "Spring Session stores the session in a shared store for this module"},
+        {"name": "cache of durable value", "kind": "refutes", "text": "the attribute only caches a value that is also stored durably"},
+        {"name": "missing state handled", "kind": "mitigates", "text": "the code handles a missing attribute safely by asking the user again"}
+      ],
+      "cite": "the session write; the read that depends on it",
+      "fix": "Store the session in a shared store (Spring Session) or keep the state on the client or in the database.",
+      "verify": "Restart the instance mid-flow; the user's flow must continue or restart safely.",
+      "declares": ["spring-session"]
+    },
+    "local-file": {
+      "inScope": true,
+      "hypothesis": "A file is written to the instance's local disk and read later or by another instance; it is lost when the instance is replaced.",
+      "check": "Is the file a staging buffer deleted in the same request, or is it read later or by another instance?",
+      "mitigations": [
+        {"name": "temp file deleted", "kind": "refutes", "text": "the file is temporary and deleted in a finally block of the same flow"},
+        {"name": "uploaded in same flow", "kind": "refutes", "text": "the file is uploaded to shared storage within the same flow before it is needed again"},
+        {"name": "shared volume", "kind": "mitigates", "text": "the path is configured as a shared, mounted volume (recorded as an assumption)"}
+      ],
+      "cite": "the file write; the read or delete",
+      "fix": "Write to shared object storage, or delete the local file before the flow ends.",
+      "verify": "Replace the instance between the write and the read; the flow must still find the data.",
+      "declares": []
+    },
+    "consumer-not-idempotent": {
+      "inScope": true,
+      "hypothesis": "Brokers deliver at least once and nothing checks whether a message was already processed; a redelivery repeats the write, send or call.",
+      "check": "Can a message be identified (an id or business key)? Is processing keyed on it? What exactly is duplicated on redelivery?",
+      "mitigations": [
+        {"name": "unique business key", "kind": "refutes", "text": "a unique constraint on a business key with conflict handling stops the duplicate"},
+        {"name": "processed-message table", "kind": "refutes", "text": "a processed-message record is checked before the work"},
+        {"name": "conditional update", "kind": "refutes", "text": "the write is a conditional update or upsert that is a no-op the second time"},
+        {"name": "fifo deduplication", "kind": "mitigates", "text": "the queue deduplicates by id for a short window (SQS FIFO, 5 minutes)"}
+      ],
+      "cite": "the listener entry; the first side effect; the check or its absence",
+      "fix": "Record the message id (or business key) with a unique constraint in the same transaction as the work, and skip duplicates.",
+      "verify": "Deliver the same message twice; the side effects must happen once.",
+      "declares": ["spring-kafka", "sqs", "spring-rabbit", "spring-amqp", "spring-jms"]
+    },
+    "webhook-not-idempotent": {
+      "inScope": true,
+      "hypothesis": "Providers retry webhooks, and nothing checks the provider's event id; a retry repeats the side effects.",
+      "check": "Which provider id identifies the delivery? Is it checked before the work, or protected by a unique constraint? What is duplicated?",
+      "mitigations": [
+        {"name": "unique event id", "kind": "refutes", "text": "a unique constraint on the provider event id with conflict handling stops the duplicate"},
+        {"name": "lookup before write", "kind": "refutes", "text": "the code looks up the event id before doing the work and skips known ones"},
+        {"name": "harmless duplicates", "kind": "mitigates", "text": "duplicates only cost storage, and everything downstream is idempotent"}
+      ],
+      "cite": "the handler entry; the first side effect; the id check or its absence",
+      "fix": "Store the provider event id with a unique constraint in the same transaction as the work, and return success for duplicates.",
+      "verify": "Send the same event twice; the side effects must happen once.",
+      "declares": []
+    },
+    "webhook-sync-remote": {
+      "inScope": true,
+      "hypothesis": "The webhook calls another service before answering; a slow dependency makes the provider time out and retry while the first attempt still runs.",
+      "check": "How long can the remote call take? Does the provider retry while the first attempt runs, and is the handler idempotent?",
+      "mitigations": [
+        {"name": "short timeout and idempotent handler", "kind": "refutes", "text": "the remote call has a short timeout and the handler is idempotent on the event id"}
+      ],
+      "cite": "the remote call; its timeout configuration or absence",
+      "fix": "Acknowledge after persisting the event, and make the remote call from a durable, retried step.",
+      "verify": "Delay the remote side beyond the provider's timeout; the work must happen once.",
+      "declares": []
+    },
+    "job-without-lock": {
+      "inScope": true,
+      "hypothesis": "A scheduled job runs on every instance; with more than one replica it repeats its writes and sends.",
+      "check": "With two replicas, what is duplicated? Are the steps row-locked or idempotent?",
+      "mitigations": [
+        {"name": "distributed lock", "kind": "refutes", "text": "ShedLock, a Quartz JDBC store or leader election guards the job, through code the scanner missed"},
+        {"name": "row claim or upsert", "kind": "refutes", "text": "every write claims rows (SELECT ... FOR UPDATE SKIP LOCKED) or is an upsert"},
+        {"name": "idempotent by comment", "kind": "mitigates", "text": "comments state the steps are idempotent, without code that enforces it"}
+      ],
+      "cite": "the @Scheduled method; the first write or send; the lock or its absence",
+      "fix": "Guard the job with ShedLock or a database lock, or make each step claim its rows.",
+      "verify": "Run two instances at the scheduled time; the work must happen once.",
+      "declares": ["shedlock", "quartz"]
+    },
+    "proxy-bypassed": {
+      "inScope": true,
+      "hypothesis": "A method calls its own @Async or @Transactional method through this; the proxy never sees the call, so it runs synchronously or without the transaction.",
+      "check": "Which annotation is bypassed? Does it matter here (@Async always; @Transactional only when the target writes or sends)?",
+      "mitigations": [
+        {"name": "self-injected proxy", "kind": "refutes", "text": "the call goes through a self-injected proxy or AopContext.currentProxy()"},
+        {"name": "caller transactional", "kind": "mitigates", "text": "the caller is itself transactional, so the work still runs in a transaction"}
+      ],
+      "cite": "the self-call; the annotation on the target",
+      "fix": "Move the annotated method to another bean, or call it through the proxy.",
+      "verify": "Assert in a test that the target runs on another thread or in a transaction.",
+      "declares": []
+    },
+    "async-listener": {
+      "inScope": true,
+      "hypothesis": "An event listener runs asynchronously; the event exists only in memory until it runs, so a restart drops it.",
+      "check": "Is the listener's work required? Is the event persisted anywhere?",
+      "mitigations": [
+        {"name": "event publication registry", "kind": "refutes", "text": "Spring Modulith's event publication registry persists the event"},
+        {"name": "re-derivable by sweeper", "kind": "refutes", "text": "a sweeper re-derives the listener's work from durable state"},
+        {"name": "best-effort listener", "kind": "mitigates", "text": "the listener's work is best effort by the code's own statement"}
+      ],
+      "cite": "the @Async listener; what it does",
+      "fix": "Persist the event (outbox or Modulith registry) or make the work re-derivable.",
+      "verify": "Stop the JVM after publishing; the listener's work must still happen.",
+      "declares": ["spring-modulith"]
+    },
+    "handoff-in-listener": {
+      "inScope": true,
+      "hypothesis": "A listener hands work to an in-process thread and returns; if the instance stops before the work runs, it is lost.",
+      "check": "Is the forked work required? Does anything re-derive it?",
+      "mitigations": [
+        {"name": "durable claim before fork", "kind": "refutes", "text": "the work is persisted with a claimable state and a sweeper picks it up"}
+      ],
+      "cite": "the submit line; the listener method",
+      "fix": "Do the work in the listener, or persist it and process it with a sweeper.",
+      "verify": "Stop the JVM before the forked task runs; the work must still happen.",
+      "declares": []
+    },
+    "handoff-in-job": {
+      "inScope": true,
+      "hypothesis": "A scheduled job forks work onto other threads; a shutdown drops what is still queued, and the next run may not pick it up.",
+      "check": "What is queued when a shutdown hits? Does the next run pick it up?",
+      "mitigations": [
+        {"name": "re-derived every run", "kind": "refutes", "text": "the job re-derives its work from durable state on every run"},
+        {"name": "drains on shutdown", "kind": "mitigates", "text": "the executor waits for queued tasks on shutdown"}
+      ],
+      "cite": "the submit line; how the job selects its work",
+      "fix": "Select work from durable state on every run and mark it done only after it completes.",
+      "verify": "Stop the JVM mid-run; the next run must finish the work.",
+      "declares": []
+    },
+    "notification-in-tx": {
+      "inScope": true,
+      "hypothesis": "A notification goes out from another thread while the transaction is still open; users can be told about a change that rolls back.",
+      "check": "Can the user be told about a change that later rolls back? Is that acceptable for this notification?",
+      "mitigations": [
+        {"name": "sent after commit", "kind": "refutes", "text": "the notification is sent after the commit"},
+        {"name": "best-effort notification", "kind": "mitigates", "text": "the notification is informational and a wrong one is harmless"}
+      ],
+      "cite": "the notification submit; the transaction boundary",
+      "fix": "Send the notification after the commit.",
+      "verify": "Force a rollback after the notification is queued; no user may be notified.",
+      "declares": []
+    },
+    "notification-handoff": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
+    "timer-handoff": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
+    "async-response": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
+    "background-thread": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
+    "in-memory-cache": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
+    "event-in-tx": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"},
+    "read-verb-writes": {"inScope": false, "reason": "LOW hint: not checked by the quick check in this version"}
+  }
+}

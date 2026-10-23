@@ -1,2 +1,4 @@
 # Shell scripts keep LF on Windows checkouts, so Git Bash can run them.
 *.sh text eol=lf
+# Hand-written audit drafts keep their BOM and CRLF: the golden test checks that both are read.
+fixtures/spring-golden/expected/audit/draft-*.jsonl -text

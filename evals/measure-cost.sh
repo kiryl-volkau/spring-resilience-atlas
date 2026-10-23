@@ -44,5 +44,13 @@ run 4-domain-cartographer "Skill Write" "/resilience-audit:domain-cartographer" 
 if [[ -n "$flow" ]]; then
   run 5-critical-flow-tracer "Skill Read Glob Grep Agent" "/resilience-audit:critical-flow-tracer $flow" --plugin-dir "$plugin"
 fi
+# The quick check: a plan that spends nothing, then exactly that plan.
+run 6-audit-plan "Skill" "/resilience-audit:audit" --plugin-dir "$plugin"
+plan_id="$(grep -o 'R[0-9]\{8\}T[0-9]\{6\}Z' "$repo/.reliability/audit/plan.json" 2>/dev/null | head -1)"
+if [[ -n "$plan_id" ]]; then
+  run 7-audit-yes "Skill Agent Read Write" "/resilience-audit:audit --yes $plan_id" --plugin-dir "$plugin"
+else
+  echo "audit plan wrote no plan; see $out/6-audit-plan.json" >&2
+fi
 
 java -cp "$root/dist/resilience-atlas.jar" "$root/evals/CostReport.java" "$out"

@@ -46,8 +46,11 @@ spikes and reviews; it is git-ignored and exists only on the author's machine.
 - Effect signals (`effects/`) and code-hint rules (`report/Risk.java`) are pinned by
   `expected/signals.tsv` and `expected/risk.tsv`. A rule change that moves a level updates them
   in the same change.
-- When trying the scanner on a real project, pass `--atlas <scratch dir>` so nothing is
-  written into its working tree.
+- Places are pinned by `expected/places.tsv`. A new rule code also needs an entry in
+  `src/main/resources/audit/hypotheses.json`. A change to the evidence packet's text moves the
+  pinned plan size in `expected/audit/plan.tsv`.
+- When trying the scanner on a real project, pass `--atlas <scratch dir>` (and `--audit <scratch
+  dir>` for `audit` commands) so nothing is written into its working tree.
 
 ## Design rules every skill follows
 

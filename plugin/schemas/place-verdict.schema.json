@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "place-verdict.schema.json",
+  "title": "Place verdict",
+  "description": "One stored row of .reliability/audit/places/<batch>.jsonl: the quick check's verdict on one place, or why it has none. The checker writes only placeId, verdict, confidence, summary, evidence, mitigationsChecked, filesOpened and needs; the scanner's audit record command validates them and stamps the rest.",
+  "type": "object",
+  "required": ["placeId", "tier", "model", "batch", "core", "recordedAt", "status"],
+  "properties": {
+    "placeId": {"type": "string", "pattern": "^PL-[0-9a-f]{8}([0-9a-f]{4})?$"},
+    "rule": {"type": "string", "description": "The code hint's rule code."},
+    "level": {"enum": ["HIGH", "MEDIUM"]},
+    "file": {"type": "string"},
+    "symbol": {"type": "string", "description": "Class.method enclosing the rule's first evidence."},
+    "operationIds": {"type": "array", "items": {"type": "string"}},
+    "verdict": {"enum": ["CONFIRMED", "REFUTED", "MITIGATED", "UNCERTAIN"], "description": "Absent on UNJUDGED rows."},
+    "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"], "description": "Capped at MEDIUM when any mitigation was NOT_CHECKED."},
+    "summary": {"type": "string"},
+    "evidence": {
+      "type": "array",
+      "description": "Required for CONFIRMED, REFUTED and MITIGATED; each snippet must occur within two lines of its line.",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "snippet"],
+        "properties": {
+          "file": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1},
+          "snippet": {"type": "string"},
+          "claim": {"type": "string"}
+        }
+      }
+    },
+    "mitigationsChecked": {
+      "type": "array",
+      "description": "Every mitigation name of the rule's hypothesis, spelled as the packet gives it.",
+      "items": {
+        "type": "object",
+        "required": ["name", "result"],
+        "properties": {
+          "name": {"type": "string"},
+          "result": {"enum": ["FOUND", "NOT_FOUND", "NOT_CHECKED"]},
+          "where": {"type": "string"}
+        }
+      }
+    },
+    "needs": {
+      "type": "object",
+      "description": "Required for UNCERTAIN: what would decide it.",
+      "required": ["kind", "what"],
+      "properties": {
+        "kind": {"enum": ["file", "symbol", "config", "runtime"]},
+        "what": {"type": "string"},
+        "wouldOpen": {"type": "string"}
+      }
+    },
+    "filesOpened": {"type": "array", "items": {"type": "string"}, "description": "Every file the checker read besides the packet."},
+    "openedFiles": {"type": "array", "items": {"type": "string"}, "description": "The files in filesOpened that the packet neither printed nor listed."},
+    "overBudget": {"type": "integer", "description": "Present when openedFiles exceeds the per-place budget."},
+    "tier": {"enum": ["TRIAGE", "DEEP", "VERIFIED"]},
+    "model": {"type": "string"},
+    "batch": {"type": "string", "pattern": "^B-R[0-9]{8}T[0-9]{6}Z-[0-9]+$"},
+    "commit": {"type": ["string", "null"]},
+    "core": {"type": "string", "description": "SHA-256 of the methods around the rule's evidence, the cited effects and the mitigation signals; the verdict is stale when it no longer matches the tree."},
+    "opened": {"type": "string", "description": "SHA-256 of openedFiles' contents; the verdict is stale when it no longer matches."},
+    "recordedAt": {"type": "string"},
+    "status": {"enum": ["CURRENT", "UNJUDGED"], "description": "As recorded. STALE is computed when the files are read, never stored."},
+    "reason": {"enum": ["no-draft", "unparsable", "partial", "rejected", "not-recorded"], "description": "Why an UNJUDGED row has no verdict."},
+    "problems": {"type": "array", "items": {"type": "string"}, "description": "For reason rejected: what failed validation."}
+  }
+}
