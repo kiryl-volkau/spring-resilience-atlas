@@ -1,0 +1,5 @@
+### ack-before-durable · Answered before the work is durable · steps 4 (S-ea343712), 6 (S-39b15adc), 8 (S-0beff9ab)
+### external-effect-inside-local-tx · External effect inside a local transaction · steps 13 (S-c4102b58), 16 (S-8f0fa9bb), 18 (S-bc8b0923)
+### at-least-once-without-idempotent-sink · Repeated delivery reaches a sink that repeats · steps 1 (S-323e93c5), 4 (S-ea343712), 10 (S-bef5186a), 11 (S-76022516), 14 (S-1d12fb1d), 16 (S-8f0fa9bb)
+### uncorrelated-callback · Callback that cannot be matched to its request · steps 1 (S-323e93c5), 16 (S-8f0fa9bb)
+### callback-before-commit · Callback arrives before the local commit · steps 1 (S-323e93c5), 16 (S-8f0fa9bb), 18 (S-bc8b0923)

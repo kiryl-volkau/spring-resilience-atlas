@@ -89,9 +89,10 @@ public record MethodDecl(
      *                 for a call's result, {@code s} for a string literal, {@code ?} otherwise
      * @param returned the call is the method's return value, so the caller decides whether it waits for it
      * @param discarded the call is a statement of its own: nothing reads what it returns
+     * @param argTexts the source text of the first two arguments, each cut at 120 characters; empty for a {@code new}
      */
     public record Site(String receiver, String name, int line, boolean chained, int args, String encl, String argType,
-                       String argHints, boolean returned, boolean discarded) {
+                       String argHints, boolean returned, boolean discarded, List<String> argTexts) {
         public static final String NEW = "<new>";
         /** {@code encl} of a lambda stored in a variable: it runs later, at a point the parse does not show. */
         public static final String LATER = "<later>";
@@ -101,7 +102,7 @@ public record MethodDecl(
         public static final String RESULT = "<result>";
 
         public Site(String receiver, String name, int line, boolean chained) {
-            this(receiver, name, line, chained, 0, null, null, null, false, false);
+            this(receiver, name, line, chained, 0, null, null, null, false, false, List.of());
         }
     }
 

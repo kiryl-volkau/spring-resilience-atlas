@@ -84,9 +84,13 @@ public final class Scanner {
         Files.createDirectories(out);
         writeJsonl(out.resolve("entrypoints.jsonl"), entryPoints.stream().map(EntryPoint::toMap).toList());
         writeJsonl(out.resolve("types.jsonl"), typeRecords(index));
-        ModuleFacts facts = new ModuleFacts(ws, AppConfig.read(ws), index);
+        AppConfig config = AppConfig.read(ws);
+        ModuleFacts facts = new ModuleFacts(ws, config, index);
         EffectAnalyzer analyzer = new EffectAnalyzer(index, module -> ws.declaresFor(module, "spring-session"),
-                ws.declares("spring-session"), facts::builderTimeouts);
+                ws.declares("spring-session"), facts::builderTimeouts, (module, key) -> {
+                    AppConfig.Entry e = config.effective(module, key);
+                    return e == null ? null : e.value();
+                });
         List<EffectAnalyzer.Result> effects = new ArrayList<>();
         List<Map<String, Object>> effectRows = new ArrayList<>();
         for (EntryPoint e : entryPoints) {
@@ -95,6 +99,7 @@ public final class Scanner {
             effectRows.add(r.toMap(e.id));
         }
         writeJsonl(out.resolve("effects.jsonl"), effectRows);
+        writeJsonl(out.resolve("links.jsonl"), new Links(index, config).derive(entryPoints, effects));
 
         Git git = new Git(ws.root);
         Map<String, Object> manifest = manifest(ws, parsed, kotlinFiles, groovyFiles, entryPoints, census,

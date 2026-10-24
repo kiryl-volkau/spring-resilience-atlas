@@ -1,0 +1,22 @@
+{
+  "takenAt": "2026-10-25T10:00:00Z",
+  "commit": "golden1",
+  "reason": "deep-done",
+  "flows": [
+    {"id":"FLOW-billing-stripe-webhook","core":"0000000000000000000000000000000000000000000000000000000000000000","tracedAt":"2026-10-25T08:00:00Z","status":"CURRENT","steps":[{"id":"S-323e93c5","kind":"TRIGGER","from":"P-73679454","to":"P-17cdb74b"},{"id":"S-faf1bd37","kind":"CALL","from":"P-17cdb74b","to":"P-905d3f9c"},{"id":"S-d0d3f8dd","kind":"TX_BEGIN","from":"P-905d3f9c","to":"P-905d3f9c"},{"id":"S-ea343712","kind":"DB_WRITE","from":"P-905d3f9c","to":"P-ae98da61"},{"id":"S-9b5f6d53","kind":"MESSAGE_SEND","from":"P-905d3f9c","to":"P-506133b8"},{"id":"S-39b15adc","kind":"ASYNC_FORK","from":"P-905d3f9c","to":"P-c85f14c6"},{"id":"S-ff461eed","kind":"TX_COMMIT","from":"P-905d3f9c","to":"P-905d3f9c"},{"id":"S-0beff9ab","kind":"RESPONSE","from":"P-17cdb74b","to":"P-73679454"},{"id":"S-23071bc3","kind":"ASYNC_RUN","from":"P-c85f14c6","to":"P-9566dc21"},{"id":"S-bef5186a","kind":"DB_WRITE","from":"P-9566dc21","to":"P-04d30cac"},{"id":"S-76022516","kind":"MESSAGE_RECEIVE","from":"P-506133b8","to":"P-878ecc18"},{"id":"S-e7ecf121","kind":"CALL","from":"P-878ecc18","to":"P-a309d728"},{"id":"S-c4102b58","kind":"TX_BEGIN","from":"P-a309d728","to":"P-a309d728"},{"id":"S-1d12fb1d","kind":"DB_WRITE","from":"P-a309d728","to":"P-998d0d06"},{"id":"S-53cb900e","kind":"CALL","from":"P-a309d728","to":"P-b28cce19"},{"id":"S-8f0fa9bb","kind":"EXTERNAL_CALL","from":"P-b28cce19","to":"P-4c43b9e7"},{"id":"S-a98575cd","kind":"EVENT_PUBLISH","from":"P-a309d728","to":"P-d1311952"},{"id":"S-bc8b0923","kind":"TX_COMMIT","from":"P-a309d728","to":"P-a309d728"},{"id":"S-413e4214","kind":"MESSAGE_ACK","from":"P-878ecc18","to":"P-506133b8"}]}
+  ],
+  "scenarios": [
+    {"id":"SC-69245ab5","flowId":"FLOW-billing-stripe-webhook","status":"VERIFIED","brokenAt":"S-bc8b0923","recordedAt":"2026-10-25T09:00:00Z"},
+    {"id":"SC-8726685d","flowId":"FLOW-billing-stripe-webhook","status":"CANDIDATE","brokenAt":"S-ea343712","recordedAt":"2026-10-25T09:00:00Z"},
+    {"id":"SC-9a0e1cbd","flowId":"FLOW-billing-stripe-webhook","status":"HARMLESS","recordedAt":"2026-10-25T09:00:00Z"},
+    {"id":"SC-9f13574b","flowId":"FLOW-billing-stripe-webhook","status":"HARMLESS","recordedAt":"2026-10-25T09:00:00Z"}
+  ],
+  "findings": [
+    {"id":"F-48320799","dedupeKey":"remote-in-tx|FLOW-billing-stripe-webhook|S-bc8b0923","ruleId":"remote-in-tx","title":"Commit fails after the charge; redelivery charges again","flowId":"FLOW-billing-stripe-webhook","brokenAt":"S-bc8b0923","brokenAtKey":"TX_COMMIT|P-a309d728|P-a309d728|src/main/java/com/acme/care/billing/service/InvoiceService.java|InvoiceService.createInvoiceFromProviderEvent","status":"VERIFIED","severity":"CRITICAL","confidence":"HIGH","recordedAt":"2026-10-25T09:00:00Z","core":"bcdfff2ee25a30616e6b4aa49468a029e4188eb29466e81def4886f6fe5abcaf","liveCore":"bcdfff2ee25a30616e6b4aa49468a029e4188eb29466e81def4886f6fe5abcaf"},
+    {"id":"F-7f9b2881","dedupeKey":"webhook-not-idempotent|FLOW-billing-stripe-webhook|S-ea343712","ruleId":"webhook-not-idempotent","title":"Stripe retries the webhook: invoice and charge twice","flowId":"FLOW-billing-stripe-webhook","brokenAt":"S-ea343712","brokenAtKey":"DB_WRITE|P-905d3f9c|P-ae98da61|src/main/java/com/acme/care/billing/service/StripeWebhookService.java|StripeWebhookService.handle","status":"CANDIDATE","severity":"HIGH","confidence":"MEDIUM","recordedAt":"2026-10-25T09:00:00Z","core":"05f27195b59d5031c5ad8e6fd1b9e6e9d556588b194d07dbf531a13779567915","liveCore":"05f27195b59d5031c5ad8e6fd1b9e6e9d556588b194d07dbf531a13779567915"}
+  ],
+  "places": [
+    {"placeId":"PL-a39aeb08","verdict":"CONFIRMED","tier":"DEEP","status":"CURRENT"},
+    {"placeId":"PL-6a66916e","verdict":"CONFIRMED","tier":"VERIFIED","status":"CURRENT"}
+  ]
+}

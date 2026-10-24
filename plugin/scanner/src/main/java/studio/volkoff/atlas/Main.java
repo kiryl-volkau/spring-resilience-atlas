@@ -2,6 +2,11 @@ package studio.volkoff.atlas;
 
 import studio.volkoff.atlas.audit.Audit;
 import studio.volkoff.atlas.audit.PlaceList;
+import studio.volkoff.atlas.flow.FlowCommand;
+import studio.volkoff.atlas.flow.FlowPage;
+import studio.volkoff.atlas.flow.FlowRecord;
+import studio.volkoff.atlas.flow.Flows;
+import studio.volkoff.atlas.flow.History;
 import studio.volkoff.atlas.query.Args;
 import studio.volkoff.atlas.query.AtlasStore;
 import studio.volkoff.atlas.query.EvidenceVerifier;
@@ -47,6 +52,18 @@ public final class Main {
                   --model haiku|sonnet|opus|fable  --batch N (8)  --max-usd X  --waves N (12)  --include-current  --audit DIR
               audit next <plan-id> [--batches N]   issue the next packets of that plan, or say why it stopped
               audit record <batch-id>      store the checker's draft for a batch as verdicts; rebuilds the derived files
+              audit deep plan [filters]    plan the deep audit of whole flows (trace, failure scenarios, verification); spends nothing
+                  --flow FLOW-id  --places PL-a  --ops EP-a  --top N (5)  --max-flows N (3)  --trace-model opus  --deep-model fable
+                  --verify-model opus  --orchestrator-model haiku  --max-usd X  --waves N (12)  --include-current; audit next issues its steps one by one
+              audit record-step <FLOW-id>:<TRACE|SCENARIOS|VERIFY>  store what a deep step's agent wrote; rebuilds the page
+              audit record-flow <FLOW-id|file>  check a tracer's draft (.reliability/flows/drafts/<id>.json), give it stable ids,
+                                           write .reliability/flows/<id>.json, the index and the flow page; exit 1 with the problems
+              flow list                    the recorded flows, current or stale
+              flow show <FLOW-id>          one flow as numbered steps
+              flow page <FLOW-id> [--open] rebuild a flow's page from its data
+              flow snapshot [--keep N]     record the flows and the deep findings in .reliability/history/
+              flow diff [<snapshot> [<snapshot>|live]] [--format json]
+                                           what was fixed, is new, still open or changed since a snapshot
 
             common: --repo DIR  --atlas DIR  --format tsv|jsonl|count  --fields a,b|+c|all  --limit N (50, max 500)  --offset N
             """;
@@ -71,15 +88,43 @@ public final class Main {
                     Path outFile = args.get("out") != null ? Path.of(args.get("out")).toAbsolutePath().normalize()
                             : reliability.resolve("report.html");
                     ReportBuilder.Summary s = new ReportBuilder().build(new ReportBuilder.Options(repo, atlasDir,
-                            args.get("audit") != null ? Path.of(args.get("audit")).toAbsolutePath() : reliability.resolve("audit"),
-                            args.get("flows") != null ? Path.of(args.get("flows")).toAbsolutePath() : reliability.resolve("flows"),
+                            auditDir(args, repo), flowsDir(args, repo),
                             outFile, args.get("title")));
                     out.print(reportSummary(s, repo));
+                    Flows recorded = flows(args, repo, atlasDir);
+                    Map<String, Object> since = History.since(recorded);
+                    if (since != null) {
+                        out.println(History.render(since).lines().findFirst().orElse(""));
+                    }
+                    int pages = FlowPage.writeAll(recorded);
+                    if (pages > 0) {
+                        out.println("# flow pages rebuilt: " + pages);
+                    }
                     if (args.flag("open")) {
                         out.println(open(outFile));
                     }
                 }
-                case "audit" -> out.print(Audit.run(repo, atlasDir, auditDir(args, repo), args));
+                case "audit" -> {
+                    if (!args.positional.isEmpty() && args.positional.get(0).equals("record-flow")) {
+                        if (args.positional.size() < 2) {
+                            throw new IllegalArgumentException("usage: audit record-flow <FLOW-id|file>");
+                        }
+                        FlowRecord.Result r = FlowRecord.record(flows(args, repo, atlasDir), args.positional.get(1), args.get("model"));
+                        out.print(r.report());
+                        if (!r.ok()) {
+                            System.exit(1);
+                        }
+                    } else {
+                        out.print(Audit.run(repo, atlasDir, auditDir(args, repo), flowsDir(args, repo), args));
+                    }
+                }
+                case "flow" -> {
+                    String result = FlowCommand.run(flows(args, repo, atlasDir), args);
+                    out.print(result);
+                    if (args.flag("open") && result.startsWith("# page: ")) {
+                        out.println(open(Path.of(java.net.URI.create(result.substring(8).strip()))));
+                    }
+                }
                 case "places" -> out.print(PlaceList.run(repo, atlasDir, auditDir(args, repo), args));
                 case "doc" -> out.print(doc(args.positional.isEmpty() ? null : args.positional.get(0)));
                 case "verify-evidence" -> {
@@ -103,12 +148,21 @@ public final class Main {
         }
     }
 
+    private static Flows flows(Args args, Path repo, Path atlasDir) {
+        return new Flows(repo, atlasDir, auditDir(args, repo), flowsDir(args, repo));
+    }
+
+    /** {@code --flows}, else beside the audit store, so a scratch {@code --audit} keeps the flows out of the working tree too. */
+    private static Path flowsDir(Args args, Path repo) {
+        return args.get("flows") != null ? Path.of(args.get("flows")).toAbsolutePath().normalize() : auditDir(args, repo).getParent().resolve("flows");
+    }
+
     private static Path auditDir(Args args, Path repo) {
         return args.get("audit") != null ? Path.of(args.get("audit")).toAbsolutePath().normalize() : repo.resolve(".reliability").resolve("audit");
     }
 
     private static final List<String> DOCS = List.of("atlas-cli.md", "not-in-atlas.md", "entrypoint-rules.md", "entrypoint.schema.json",
-            "domain.schema.json", "flow.schema.json", "finding.schema.json", "place-verdict.schema.json");
+            "domain.schema.json", "flow.schema.json", "scenario.schema.json", "finding.schema.json", "place-verdict.schema.json", "flow-pages.md");
 
     private static String doc(String name) throws java.io.IOException {
         if (name == null || !DOCS.contains(name)) {

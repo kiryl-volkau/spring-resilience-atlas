@@ -162,6 +162,7 @@ public final class EffectAnalyzer {
     private final java.util.function.Predicate<String> springSession;
     private final boolean springSessionAnywhere;
     private final Construction construction;
+    private final Destinations destinations;
     private final Map<MethodDecl, TxAnno> txCache = new IdentityHashMap<>();
     private final Map<MethodDecl, TxAnno> methodTxCache = new IdentityHashMap<>();
     private final Map<TypeDecl, List<TypeDecl>> implCache = new IdentityHashMap<>();
@@ -170,16 +171,18 @@ public final class EffectAnalyzer {
     /**
      * {@code springSession} tells, per build module, whether Spring Session is declared: HTTP
      * session attributes are then stored externally. {@code builderTimeouts} tells whether the
-     * module's application config sets the timeouts Spring Boot applies to the HTTP client builders it provides.
+     * module's application config sets the timeouts Spring Boot applies to the HTTP client builders it provides;
+     * {@code config} gives a key's value in a module's production config, or null.
      */
     public EffectAnalyzer(Index index, java.util.function.Predicate<String> springSession, boolean springSessionAnywhere,
-                          java.util.function.Predicate<String> builderTimeouts) {
+                          java.util.function.Predicate<String> builderTimeouts, java.util.function.BinaryOperator<String> config) {
         this.index = index;
         this.springSessionAnywhere = springSessionAnywhere;
         this.an = new Annotations(index);
         this.ev = new Evaluator(index);
         this.springSession = springSession;
         this.construction = new Construction(index, builderTimeouts);
+        this.destinations = new Destinations(index, config);
     }
 
     public Result analyse(EntryPoint ep) {
@@ -275,6 +278,10 @@ public final class EffectAnalyzer {
          * and the owner of the transaction it was first seen in at that strength.
          */
         void add(String signal, String detail, String file, int line, String symbol, int hop, Tx tx) {
+            add(signal, detail, file, line, symbol, hop, tx, null);
+        }
+
+        void add(String signal, String detail, String file, int line, String symbol, int hop, Tx tx, Map<String, Object> target) {
             String key = signal + "|" + file + "|" + line + "|" + detail;
             Frame f = frames.peek();
             // A site in a TransactionTemplate callback of a method without its own transaction: that method is the boundary.
@@ -285,14 +292,14 @@ public final class EffectAnalyzer {
             if (at == null) {
                 at = effects.size();
                 seen.put(key, at);
-                effects.add(new Effect(signal, detail, file, line, symbol, hop, tx == Tx.READ_WRITE, tx == Tx.READ_ONLY, ownerSymbol, ownerAt, null));
+                effects.add(new Effect(signal, detail, file, line, symbol, hop, tx == Tx.READ_WRITE, tx == Tx.READ_ONLY, ownerSymbol, ownerAt, null, target));
             } else {
                 Effect old = effects.get(at);
                 boolean rw = old.inTx() || tx == Tx.READ_WRITE;
                 boolean takeNew = old.txOwner() == null || !old.inTx() && tx == Tx.READ_WRITE;
                 effects.set(at, new Effect(signal, detail, file, line, old.symbol(), Math.min(old.hop(), hop), rw,
                         !rw && (old.inReadOnlyTx() || tx == Tx.READ_ONLY), takeNew ? ownerSymbol : old.txOwner(),
-                        takeNew ? ownerAt : old.txOwnerAt(), old.caughtAt()));
+                        takeNew ? ownerAt : old.txOwnerAt(), old.caughtAt(), old.target() != null ? old.target() : target));
             }
             if (!Guard.GUARDED.contains(signal)) {
                 return;
@@ -318,7 +325,7 @@ public final class EffectAnalyzer {
                     Effect e = effects.get(i);
                     if (e.caughtAt() == null) {
                         effects.set(i, new Effect(e.signal(), e.detail(), e.file(), e.line(), e.symbol(), e.hop(), e.inTx(),
-                                e.inReadOnlyTx(), e.txOwner(), e.txOwnerAt(), g.at));
+                                e.inReadOnlyTx(), e.txOwner(), e.txOwnerAt(), g.at, e.target()));
                     }
                 }
                 add(Signals.SWALLOWED, "catch (" + String.join(" | ", g.c.types()) + ") without rethrow around "
@@ -618,7 +625,9 @@ public final class EffectAnalyzer {
                 if (call.signal().equals(Signals.MESSAGE) && s.discarded() && !callback && Signals.RESULT_SENDS.contains(simple + "." + name)) {
                     detail += Signals.IGNORED;
                 }
-                add(call.signal(), detail, file, s.line(), symbol, hop, tx);
+                Map<String, Object> target = call.signal().equals(Signals.MESSAGE)
+                        ? destinations.resolve(caller.declaring(), s, simple, module).toMap() : null;
+                add(call.signal(), detail, file, s.line(), symbol, hop, tx, target);
                 boolean pool = call.signal().equals(Signals.ASYNC) && !call.detail().startsWith(Signals.TIMER);
                 boolean http = call.signal().equals(Signals.EXTERNAL) && call.detail().startsWith("HTTP ");
                 if (r.field() && (pool || http)) {

@@ -1,11 +1,14 @@
 ---
 name: audit
-description: Check the code hints of the resilience report with a cheap model. Plans the check of the report's places, prints its cost and runs it only on --yes <plan-id>. Use when asked to check, verify or audit the hints, the places or the risky operations of the report, for all of them or for a package, module, rule or operation.
-argument-hint: "[--yes <plan-id>] [--package P | --module M | --kind K | --rule R | --level HIGH,MEDIUM,LOW,NONE | --places PL-… | --ops EP-…] [--model sonnet] [--max-usd X]"
+description: Check the code hints of the resilience report with a cheap model, or with --deep audit whole flows (trace, failure scenarios, verification). Plans the check, prints its cost and runs it only on --yes <plan-id>. Use when asked to check, verify or audit the hints, the places, the risky operations or a flow of the report, for all of them or for a package, module, rule, operation or flow.
+argument-hint: "[--deep] [--yes <plan-id>] [--package P | --module M | --kind K | --rule R | --level HIGH,MEDIUM,LOW,NONE | --places PL-… | --ops EP-… | --flow FLOW-…] [--model sonnet] [--max-flows N] [--max-usd X]"
 allowed-tools:
   - Bash(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
   - PowerShell(java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" *)
   - Edit(.reliability/audit/drafts/**)
+  - Write(.reliability/audit/drafts/**)
+  - Write(.reliability/flows/**)
+  - Edit(.reliability/flows/**)
 model: haiku
 effort: medium
 ---
@@ -28,6 +31,7 @@ Arguments: `$ARGUMENTS`
 
 ## Which path
 
+- **The arguments contain `--deep`.** Follow "Deep audit" below instead of steps 1 to 3.
 - **The arguments contain `--yes <plan-id>`.** Go straight to step 2 with exactly that id.
   Do not run `audit plan` first: planning again replaces the plan, and the confirmed id stops
   working.
@@ -110,6 +114,43 @@ the code it read. It is not a verified defect. "Checked (quick)" is not "safe".
   `--yes` to plan again.
 - **An agent cannot write its draft.** Record the batch anyway; its places become unjudged
   and the next plan offers them again.
+
+## Deep audit
+
+A deep audit takes whole flows: the `flow-tracer` traces the flow when no current trace exists,
+the `scenario-author` writes its failure scenarios, and the `flow-verifier`, a different model,
+tries to disprove the severe ones. The spending rule above applies unchanged: nothing costs money
+until an agent starts, and agents start only for lines `audit next` printed in this turn.
+
+**Plan.** Without `--yes <id>`, run `audit deep plan` with every argument except `--deep` passed
+through unchanged, for example `audit deep plan --flow FLOW-billing-stripe-webhook`. It prints
+one row per flow, then `#` lines with the estimate, the caps and the exact `--yes` command.
+Continue to the run only when the user's message in this turn explicitly asks to run after the
+estimate and the estimate meets their limit; otherwise reply in a few lines (the flows, the
+steps planned, the estimate and cap from the `#` lines, that nothing has been spent, the exact
+command) and stop. If it prints `# nothing to audit deeply`, relay that line and stop.
+
+**Run.** With `--deep --yes <id>`, or after a plan the user asked to run, loop:
+
+1. Run `audit next <id>`. It prints a progress line, then at most one step line:
+   `packet <path> draft <path> step <FLOW-id>:<STEP> agent <agent> model <alias>`.
+   A line `stoppedBecause: …` or an error ends the loop.
+2. Launch the line's `agent` in the foreground with the line's `model`. The prompt is
+   `Packet: <packet path>. Draft: <draft path>.`, both copied from the line; for the
+   `resilience-audit:flow-tracer` add `Atlas CLI: java "${CLAUDE_PLUGIN_ROOT}/scanner/Launch.java" --cache "${CLAUDE_PLUGIN_DATA}" <command>`.
+3. When it returns, whatever it returned, run `audit record-step <FLOW-id>:<STEP>` with the
+   step from the line. It never fails for a bad draft. Do not retry the agent and do not fix a
+   draft yourself.
+4. Print the record command's first `#` line, then go to 1.
+
+**Report.** Run `report` (no `--scan`). Reply in the user's language, per flow in one or two
+lines, from the record lines: steps recorded, scenarios (verified, disproved, harmless),
+findings, whether a design-level change is needed, and the flow page's `file://` url from the
+`# page:` line; then the estimated spend against the cap, the report url and the backlog. Call
+a verified scenario "verified", a candidate one "suspected", and one recorded as blocked
+"verified, and it bites once the defect that stops the flow earlier is fixed". Relay `LONG` and
+`REJECTED` lines as a count, and any concept that matched with no scenario. Say that places and
+operations outside these flows were not audited deeply.
 
 `.reliability/` is a local, generated directory. Never stage or commit it, and never modify
 the application's code.

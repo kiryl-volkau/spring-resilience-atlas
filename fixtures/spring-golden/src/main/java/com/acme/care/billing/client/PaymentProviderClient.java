@@ -17,7 +17,7 @@ public class PaymentProviderClient {
     private final String baseUrl;
 
     public PaymentProviderClient(@Qualifier("paymentProviderRestTemplate") RestTemplate restTemplate,
-                                 @Value("${care.billing.payment-provider.base-url}") String baseUrl) {
+                                 @Value("${care.billing.stripe.base-url}") String baseUrl) {
         this.restTemplate = restTemplate;
         this.baseUrl = baseUrl;
     }

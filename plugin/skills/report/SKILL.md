@@ -38,6 +38,8 @@ Reply in a few lines, in the user's language:
 - if the `# audit` line shows results, relay its counts. Smells there are mostly places the
   quick check suspects, not verified defects; "checked (quick)" is not "safe". Mention
   `.reliability/backlog.md` when the line shows suspected places.
+- if a `# since` line is printed, relay its counts: what a deep audit found fixed, new, still
+  open, or changed without being audited again since the snapshot it names.
 - the next step: `/resilience-audit:audit` checks the hints with a cheap model and prints its
   cost before spending anything; the `critical-flow-tracer` skill traces one operation in depth.
 

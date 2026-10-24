@@ -1,5 +1,9 @@
 import studio.volkoff.atlas.audit.Audit;
 import studio.volkoff.atlas.audit.Hypotheses;
+import studio.volkoff.atlas.flow.FlowAscii;
+import studio.volkoff.atlas.flow.FlowRecord;
+import studio.volkoff.atlas.flow.Flows;
+import studio.volkoff.atlas.flow.History;
 import studio.volkoff.atlas.json.Json;
 import studio.volkoff.atlas.query.Args;
 import studio.volkoff.atlas.query.AtlasStore;
@@ -117,6 +121,9 @@ public final class GoldenTest {
         problems += checkRisk(fixture.resolve("expected/risk.tsv"), atlas);
         problems += checkPlaces(fixture.resolve("expected/places.tsv"), fixture, atlas);
         problems += checkAudit(fixture, atlas);
+        problems += checkLinks(fixture.resolve("expected/links.tsv"), atlas);
+        problems += checkFlows(fixture, atlas);
+        problems += checkDeep(fixture, atlas);
         int total = actual.values().stream().mapToInt(Integer::intValue).sum();
         System.out.println("# golden: " + total + " actual, " + expected.values().stream().mapToInt(Integer::intValue).sum()
                 + " expected, " + problems + " differences");
@@ -343,11 +350,247 @@ public final class GoldenTest {
         return problems;
     }
 
+    /** Rows of {@code kind, from, to, key, status}: every candidate link of {@code atlas/links.jsonl}. The set must match exactly. */
+    private static int checkLinks(Path expectedFile, Path atlas) throws Exception {
+        if (!Files.exists(expectedFile)) {
+            return 0;
+        }
+        java.util.Set<String> actual = new java.util.TreeSet<>();
+        for (String line : Files.readAllLines(atlas.resolve("links.jsonl"), StandardCharsets.UTF_8)) {
+            if (!line.isBlank()) {
+                Map<String, Object> r = Json.parseObject(line);
+                actual.add(String.join("\t", String.valueOf(r.get("kind")), String.valueOf(((Map<?, ?>) r.get("from")).get("symbol")),
+                        String.valueOf(((Map<?, ?>) r.get("to")).get("symbol")), String.valueOf(r.get("key")), String.valueOf(r.get("status"))));
+            }
+        }
+        java.util.Set<String> expected = new java.util.TreeSet<>();
+        List<String> rows = Files.readAllLines(expectedFile, StandardCharsets.UTF_8);
+        for (String row : rows.subList(1, rows.size())) {
+            if (!row.isBlank()) {
+                expected.add(row.strip());
+            }
+        }
+        int problems = 0;
+        for (String e : expected) {
+            if (!actual.contains(e)) {
+                problems++;
+                System.out.println("LINK MISSING   " + e);
+            }
+        }
+        for (String a : actual) {
+            if (!expected.contains(a)) {
+                problems++;
+                System.out.println("LINK EXTRA     " + a);
+            }
+        }
+        return problems;
+    }
+
+    /**
+     * Each hand-written flow draft in {@code expected/flows/} records with the stable ids its
+     * {@code .txt} pins, and its page fills every template marker and stays under the plugin
+     * directory's 256 KiB file limit.
+     */
+    private static int checkFlows(Path fixture, Path atlas) throws Exception {
+        Path expected = fixture.resolve("expected/flows");
+        if (!Files.isDirectory(expected)) {
+            return 0;
+        }
+        int problems = 0;
+        Path work = Files.createTempDirectory("flows-golden");
+        Flows flows = new Flows(fixture, atlas, work.resolve("audit"), work.resolve("flows"));
+        List<Path> drafts;
+        try (java.util.stream.Stream<Path> files = Files.list(expected)) {
+            drafts = files.filter(f -> f.getFileName().toString().endsWith(".json")).sorted().toList();
+        }
+        for (Path draft : drafts) {
+            String id = draft.getFileName().toString().replace(".json", "");
+            FlowRecord.Result r = FlowRecord.record(flows, fixture.relativize(draft).toString().replace('\\', '/'), "golden");
+            if (!r.ok()) {
+                problems++;
+                System.out.println("FLOW REJECTED " + id + "\n" + r.report());
+                continue;
+            }
+            String shown = FlowAscii.render(Flows.read(flows.doc(id)));
+            Path text = expected.resolve(id + ".txt");
+            String want = Files.exists(text) ? Files.readString(text, StandardCharsets.UTF_8).replace("\r\n", "\n") : "";
+            if (!shown.equals(want)) {
+                problems++;
+                System.out.println("FLOW TEXT " + id + " differs from " + text.getFileName() + "; got:\n" + shown);
+            }
+            String html = Files.readString(flows.page(id), StandardCharsets.UTF_8);
+            if (html.length() > 256 * 1024 || html.contains("__DATA__") || html.contains("/*__DIAGRAM__*/") || html.contains("/*__THEME__*/")) {
+                problems++;
+                System.out.println("FLOW PAGE " + id + " is " + html.length() + " bytes or has an unfilled template marker");
+            }
+        }
+        return problems;
+    }
+
+    /**
+     * The deep audit on the golden flow without a model: the concepts the scanner matches, a bad and
+     * a good scenario draft, a verification draft, and what they leave in the store, all pinned in
+     * {@code expected/audit/deep/}.
+     */
+    private static int checkDeep(Path fixture, Path atlas) throws Exception {
+        Path expected = fixture.resolve("expected/audit/deep");
+        if (!Files.isDirectory(expected)) {
+            return 0;
+        }
+        String flow = "FLOW-billing-stripe-webhook";
+        Path work = Files.createTempDirectory("deep-golden");
+        Path audit = work.resolve("audit");
+        Flows flows = new Flows(fixture, atlas, audit, work.resolve("flows"));
+        FlowRecord.Result traced = FlowRecord.record(flows, "expected/flows/" + flow + ".json", "golden");
+        if (!traced.ok()) {
+            System.out.println("DEEP the golden flow was not recorded\n" + traced.report());
+            return 1;
+        }
+        int problems = 0;
+
+        String plan = audit(fixture, atlas, audit, "deep", "plan", "--flow", flow);
+        String[] issued = stepOf(audit(fixture, atlas, audit, "next", planId(plan)));
+        StringBuilder concepts = new StringBuilder();
+        for (String line : Files.readAllLines(Path.of(issued[0]), StandardCharsets.UTF_8)) {
+            if (line.startsWith("### ") && line.contains(" · steps ")) {
+                concepts.append(line).append('\n');
+            }
+        }
+        problems += pinned(expected.resolve("concepts.txt"), concepts.toString(), "DEEP CONCEPTS");
+        Files.createDirectories(Path.of(issued[1]).getParent());
+        Files.copy(expected.resolve("scenarios-bad.jsonl"), Path.of(issued[1]), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        problems += pinned(expected.resolve("scenarios-bad.txt"), withoutPage(audit(fixture, atlas, audit, "record-step", flow + ":SCENARIOS")), "DEEP BAD DRAFT");
+
+        plan = audit(fixture, atlas, audit, "deep", "plan", "--flow", flow);
+        String id = planId(plan);
+        issued = stepOf(audit(fixture, atlas, audit, "next", id));
+        Files.copy(expected.resolve("scenarios-ok.jsonl"), Path.of(issued[1]), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        problems += pinned(expected.resolve("scenarios-ok.txt"), withoutPage(audit(fixture, atlas, audit, "record-step", flow + ":SCENARIOS")), "DEEP GOOD DRAFT");
+        issued = stepOf(audit(fixture, atlas, audit, "next", id));
+        Files.copy(expected.resolve("verification.jsonl"), Path.of(issued[1]), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        problems += pinned(expected.resolve("verification.txt"), withoutPage(audit(fixture, atlas, audit, "record-step", flow + ":VERIFY")), "DEEP VERIFICATION");
+        String done = audit(fixture, atlas, audit, "next", id);
+        if (!done.contains("stoppedBecause: done")) {
+            problems++;
+            System.out.println("DEEP the plan did not stop after VERIFY:\n" + done);
+        }
+
+        StringBuilder derived = new StringBuilder("finding\trule\tstatus\tseverity\tconfidence\tscope\toperation\tscenarios\tblockedBy\tfailureScenario\n");
+        for (Map<String, Object> f : AtlasStore.readJsonl(audit.resolve("findings.jsonl"))) {
+            Map<?, ?> c = (Map<?, ?>) f.get("concept");
+            derived.append(f.get("id")).append('\t').append(f.get("ruleId")).append('\t').append(f.get("status")).append('\t').append(f.get("severity"))
+                    .append('\t').append(f.get("confidence")).append('\t').append(c.get("scope")).append('\t').append(f.get("operationId"))
+                    .append('\t').append(f.get("scenarioIds")).append('\t')
+                    .append(f.get("blockedBy") instanceof Map<?, ?> b ? b.get("what") : "-").append('\t').append(f.get("failureScenario")).append('\n');
+        }
+        derived.append("place\ttier\tverdict\tfindings\n");
+        for (Map<String, Object> r : AtlasStore.readJsonl(audit.resolve("places.jsonl"))) {
+            if (!"TRIAGE".equals(r.get("tier"))) {
+                derived.append(r.get("placeId")).append('\t').append(r.get("tier")).append('\t').append(r.get("verdict")).append('\t').append(r.get("findingIds")).append('\n');
+            }
+        }
+        derived.append("operation\ttier\tcolour\tfindings\tsummary\n");
+        for (Map<String, Object> v : AtlasStore.readJsonl(audit.resolve("verdicts.jsonl"))) {
+            if (!"TRIAGE".equals(v.get("tier"))) {
+                derived.append(v.get("id")).append('\t').append(v.get("tier")).append('\t').append(v.getOrDefault("colour", "-")).append('\t')
+                        .append(v.get("findingIds")).append('\t').append(v.get("summary")).append('\n');
+            }
+        }
+        problems += pinned(expected.resolve("derived.tsv"), derived.toString(), "DEEP DERIVED");
+
+        String page = Files.readString(flows.page(flow), StandardCharsets.UTF_8);
+        for (Map<String, Object> sc : AtlasStore.readJsonl(audit.resolve("scenarios").resolve(flow + ".jsonl"))) {
+            if (!page.contains(String.valueOf(sc.get("id")))) {
+                problems++;
+                System.out.println("DEEP the flow page lacks scenario " + sc.get("id"));
+            }
+        }
+        problems += checkHistory(fixture, flows);
+        String backlog = Files.readString(work.resolve("backlog.md"), StandardCharsets.UTF_8);
+        if (!backlog.contains("status VERIFIED · Design-level") || !backlog.contains("status VERIFIED · Step-level")) {
+            problems++;
+            System.out.println("DEEP the backlog lacks a verified design-level and a verified step-level task:\n" + backlog);
+        }
+        return problems;
+    }
+
+    /**
+     * The snapshot writer on the deep golden state, pinned as {@code expected/flows/history/A.json}
+     * with its times and commit fixed; then the comparison of A with two hand-edited states: B, where
+     * the reconciliation finding is gone after a later run on a re-traced flow (fixed), and C, where
+     * only that finding's code changed (changed, not audited again).
+     */
+    private static int checkHistory(Path fixture, Flows flows) throws Exception {
+        Path dir = fixture.resolve("expected/flows/history");
+        if (!Files.isDirectory(dir)) {
+            return 0;
+        }
+        int problems = pinned(dir.resolve("A.json"), Json.pretty(fixed(History.state(flows, "golden"))) + "\n", "HISTORY SNAPSHOT");
+        StringBuilder diffs = new StringBuilder();
+        for (String to : List.of("B.json", "C.json")) {
+            diffs.append(History.render(History.diff(History.load(flows, dir.resolve("A.json").toString()), History.load(flows, dir.resolve(to).toString()))));
+        }
+        return problems + pinned(dir.resolve("diff.txt"), diffs.toString(), "HISTORY DIFF");
+    }
+
+    /** The state with what changes per run (times, commit, tree hash) set to fixed values. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> fixed(Map<String, Object> state) {
+        state.put("takenAt", "2026-10-24T10:00:00Z");
+        state.put("commit", "golden0");
+        state.remove("sourcesHash");
+        for (String list : List.of("flows", "scenarios", "findings")) {
+            for (Object o : (List<?>) state.get(list)) {
+                Map<String, Object> m = (Map<String, Object>) o;
+                m.computeIfPresent("recordedAt", (k, v) -> "2026-10-24T09:00:00Z");
+                m.computeIfPresent("tracedAt", (k, v) -> "2026-10-24T08:00:00Z");
+            }
+        }
+        return state;
+    }
+
+    /**
+     * Compares output with a pinned file; prints what it got when they differ or the file is missing.
+     * {@code GOLDEN_WRITE=1} writes the output instead, for a change that moves the pin on purpose.
+     */
+    private static int pinned(Path file, String got, String label) throws Exception {
+        String want = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n") : null;
+        if (got.equals(want)) {
+            return 0;
+        }
+        if ("1".equals(System.getenv("GOLDEN_WRITE"))) {
+            Files.writeString(file, got, StandardCharsets.UTF_8);
+            System.out.println(label + " written to " + file.getFileName());
+            return 0;
+        }
+        System.out.println(label + " differs from " + file.getFileName() + "; got:\n" + got);
+        return 1;
+    }
+
+    private static String withoutPage(String recorded) {
+        StringBuilder out = new StringBuilder();
+        for (String line : recorded.split("\n")) {
+            if (!line.startsWith("# page: ")) {
+                out.append(line).append('\n');
+            }
+        }
+        return out.toString();
+    }
+
+    /** The packet and draft paths of the step {@code audit next} issued. */
+    private static String[] stepOf(String nextOutput) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("packet\t([^\t]+)\tdraft\t([^\t]+)\tstep\t").matcher(nextOutput);
+        if (!m.find()) {
+            throw new IllegalStateException("audit next issued no step:\n" + nextOutput);
+        }
+        return new String[] {m.group(1), m.group(2)};
+    }
+
     private static String audit(Path fixture, Path atlas, Path audit, String... args) throws Exception {
         String[] argv = new String[args.length + 1];
         argv[0] = "audit";
         System.arraycopy(args, 0, argv, 1, args.length);
-        return Audit.run(fixture, atlas, audit, new Args(argv));
+        return Audit.run(fixture, atlas, audit, audit.getParent().resolve("flows"), new Args(argv));
     }
 
     private static String planId(String planOutput) {

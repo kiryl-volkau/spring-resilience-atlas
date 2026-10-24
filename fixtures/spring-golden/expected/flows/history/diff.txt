@@ -1,0 +1,9 @@
+# since 2026-10-24 10:00:00 UTC (golden0) → 2026-10-25 10:00:00 UTC (golden1): 1 finding fixed, 0 new, 2 still open, 0 changed and not audited again, 0 disproved
+flows retraced: FLOW-billing-stripe-webhook
+FIXED	F-96c754e4	HIGH	FLOW-billing-stripe-webhook	Restart after the 200: reconciliation lost
+OPEN	F-48320799	CRITICAL	FLOW-billing-stripe-webhook	Commit fails after the charge; redelivery charges again
+OPEN	F-7f9b2881	HIGH	FLOW-billing-stripe-webhook	Stripe retries the webhook: invoice and charge twice
+# since 2026-10-24 10:00:00 UTC (golden0) → 2026-10-25 10:00:00 UTC (golden1): 0 findings fixed, 0 new, 2 still open, 1 changed and not audited again, 0 disproved
+CHANGED	F-96c754e4	HIGH	FLOW-billing-stripe-webhook	Restart after the 200: reconciliation lost  (its code changed; not audited again)
+OPEN	F-48320799	CRITICAL	FLOW-billing-stripe-webhook	Commit fails after the charge; redelivery charges again
+OPEN	F-7f9b2881	HIGH	FLOW-billing-stripe-webhook	Stripe retries the webhook: invoice and charge twice

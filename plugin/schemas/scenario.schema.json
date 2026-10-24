@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "scenario.schema.json",
+  "title": "Failure scenario",
+  "description": "Text over its maxLength is kept up to half as long again and dropped past that. One stored row of .reliability/audit/scenarios/<FLOW-id>.jsonl: a short story on a recorded flow's steps that shows where it breaks. The scenario author writes the fields without a 'stamped' note; audit record-step validates them against the flow and the working tree and stamps the rest. The verifier's outcome moves status and adds verifiedBy.",
+  "type": "object",
+  "required": ["id", "flowId", "title", "trigger", "steps", "outcome", "because", "mitigation", "severity", "confidence", "evidence", "status"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^SC-[0-9a-f]{8}$", "description": "Stamped: SHA-1 of flowId|trigger.kind|trigger.at|brokenAt."},
+    "flowId": {"type": "string", "description": "Stamped."},
+    "flowFingerprint": {"type": ["string", "null"], "description": "Stamped: the flow's fingerprint.core the scenario was written against; a scenario whose flow changed since is shown as written against an earlier trace."},
+    "title": {"type": "string", "maxLength": 60},
+    "trigger": {
+      "type": "object",
+      "required": ["kind", "at", "detail"],
+      "properties": {
+        "kind": {"enum": ["PROVIDER_DOWN", "PROVIDER_SLOW", "DB_DOWN", "COMMIT_FAILS", "CRASH_BEFORE_COMMIT", "CRASH_AFTER_COMMIT", "RESTART_DEPLOY", "REDELIVERY", "DUPLICATE_DELIVERY", "CONCURRENT_DELIVERY", "OUT_OF_ORDER", "POISON_MESSAGE", "TIMEOUT_RETRY", "PARTIAL_FAILURE_IN_FANOUT", "SECOND_REPLICA"]},
+        "at": {"type": "string", "description": "The flow step before or during which the trigger hits."},
+        "detail": {"type": "string", "maxLength": 80}
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["n", "happens", "state"],
+        "properties": {
+          "n": {"type": "integer"},
+          "stepRef": {"type": ["string", "null"], "description": "A step id of the flow; null only for the INJECTED trigger step."},
+          "happens": {"type": "string", "maxLength": 140},
+          "state": {"enum": ["OK", "BROKEN", "LOST", "DUPLICATE", "SKIPPED", "HUNG", "INJECTED"]}
+        }
+      }
+    },
+    "brokenAt": {"type": ["string", "null"], "description": "The arrow drawn broken: the stepRef of a BROKEN, LOST, DUPLICATE or HUNG story step. May be null when outcome.kind is NONE."},
+    "outcome": {
+      "type": "object",
+      "required": ["kind", "what"],
+      "properties": {
+        "kind": {"enum": ["LOST", "DUPLICATED", "INCONSISTENT", "HUNG", "DELAYED", "NONE"], "description": "NONE: the author checked the pattern and found it harmless here."},
+        "what": {"type": "string", "maxLength": 80},
+        "businessPart": {"type": ["string", "null"], "description": "A business part id of the flow; required unless kind is NONE."}
+      }
+    },
+    "because": {"type": "string", "maxLength": 200},
+    "mitigation": {
+      "type": "object",
+      "required": ["present", "name", "covers"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "name": {"type": "string", "maxLength": 80, "description": "When present and the scenario explains a place, one of that rule's mitigation names."},
+        "covers": {"enum": ["FULL", "PARTIAL", "NONE"]},
+        "evidence": {"type": "object"}
+      }
+    },
+    "ruleId": {"type": "string", "description": "The code hint's rule of the place the scenario explains; stamped from placeId."},
+    "placeId": {"type": "string", "pattern": "^PL-[0-9a-f]{8}([0-9a-f]{4})?$", "description": "A place the flow crosses. A draft may give only ruleId when one place on the flow has that rule."},
+    "mitigationsChecked": {"type": "array", "description": "Required with a place: every mitigation name of its rule, with FOUND, PARTIAL, NOT_FOUND or NOT_CHECKED."},
+    "concept": {
+      "type": "object",
+      "properties": {
+        "pattern": {"type": "string", "description": "A concept id of audit/concepts.json."},
+        "scope": {"enum": ["STEP", "CONCEPT"], "description": "Computed: STEP when one STEP change alone closes every broken story step, CONCEPT otherwise. Absent on a harmless scenario."},
+        "proposedScope": {"enum": ["STEP", "CONCEPT"], "description": "What the author wrote, when it wrote one."},
+        "closes": {
+          "type": "array",
+          "description": "At least one entry unless the scenario is harmless.",
+          "items": {
+            "type": "object",
+            "required": ["change", "level", "steps"],
+            "properties": {
+              "change": {"type": "string", "maxLength": 100},
+              "level": {"enum": ["STEP", "CONCEPT"]},
+              "steps": {"type": "array", "items": {"type": "string"}, "description": "The story's stepRefs this change closes."}
+            }
+          }
+        }
+      }
+    },
+    "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+    "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"]},
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "snippet", "claim"],
+        "properties": {
+          "file": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1},
+          "snippet": {"type": "string", "description": "Must occur within two lines of line."},
+          "claim": {"type": "string", "maxLength": 120}
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "description": "Required unless the scenario is harmless: what the derived finding recommends.",
+      "properties": {
+        "recommendation": {"type": "string"},
+        "verification": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "filesOpened": {"type": "array", "items": {"type": "string"}},
+    "status": {"enum": ["CANDIDATE", "VERIFIED", "DISPROVED", "HARMLESS"], "description": "Stamped: CANDIDATE, or HARMLESS when outcome.kind is NONE; the verifier's outcome moves it to VERIFIED or DISPROVED, and a DOUBT leaves it CANDIDATE with confidence one step lower."},
+    "findingId": {"type": "string", "description": "Stamped: the finding derived from this scenario."},
+    "verifiedBy": {"type": "object", "description": "Stamped from the verifier's draft: model, run, outcome (VERIFIED, DISPROVED, DOUBT or BLOCKED), note, evidence, filesOpened, verifiedAt."},
+    "blockedBy": {"type": "object", "description": "Stamped when the verifier found the mechanism real but another defect stops the flow earlier: what and evidence. The scenario counts as verified and bites once that defect is fixed."},
+    "model": {"type": "string"},
+    "batch": {"type": "string"},
+    "commit": {"type": ["string", "null"]},
+    "recordedAt": {"type": "string"}
+  }
+}

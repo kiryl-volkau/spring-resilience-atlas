@@ -1,0 +1,9 @@
+# scenarios recorded for FLOW-billing-stripe-webhook: 5 accepted (2 harmless), 0 rejected · 3 findings · 3 places judged deep
+scenario	status	severity	confidence	scope	finding	title
+SC-c07cf438	CANDIDATE	HIGH	HIGH	STEP	F-96c754e4	Restart after the 200: reconciliation lost
+SC-69245ab5	CANDIDATE	CRITICAL	HIGH	CONCEPT	F-48320799	Commit fails after the charge; redelivery charges again
+SC-8726685d	CANDIDATE	HIGH	HIGH	STEP	F-7f9b2881	Stripe retries the webhook: invoice and charge twice
+SC-9a0e1cbd	HARMLESS	LOW	MEDIUM	-	-	Charge webhook before the invoice commits
+SC-9f13574b	HARMLESS	LOW	MEDIUM	-	-	Charge event cannot be matched to its invoice
+LONG	line 4	because	is 212 characters, over its limit of 200; kept
+# FLOW-billing-stripe-webhook:SCENARIOS recorded

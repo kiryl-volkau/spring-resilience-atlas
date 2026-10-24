@@ -7,7 +7,7 @@
   "required": ["id", "ruleId", "commit", "flowId", "severity", "confidence", "status", "failureScenario", "evidence", "mitigationsChecked", "sourceBudget", "recommendation", "verification", "dedupeKey"],
   "properties": {
     "id": {"type": "string", "pattern": "^F-[0-9a-f]{8}$"},
-    "ruleId": {"type": "string", "pattern": "^[a-z-]+$|^[A-Z]{2,5}-[0-9]{3}$", "description": "A code hint's rule code, e.g. handoff-after-ack, or a rule from an audit skill's rule file, e.g. DUR-001."},
+    "ruleId": {"type": "string", "pattern": "^[a-z-]+$|^[A-Z]{2,5}-[0-9]{3}$", "description": "A code hint's rule code, e.g. handoff-after-ack, a concept id of audit/concepts.json for a design-level finding, or a rule from an audit skill's rule file, e.g. DUR-001."},
     "operationId": {"type": "string", "description": "The entry point the finding belongs to, when it is not given by the flow."},
     "placeId": {"type": "string", "pattern": "^PL-[0-9a-f]{8}([0-9a-f]{4})?$", "description": "The place in the code the finding is about."},
     "title": {"type": "string"},
@@ -15,10 +15,14 @@
     "commit": {"type": ["string", "null"]},
     "domain": {"type": ["string", "null"]},
     "flowId": {"type": "string"},
+    "scenarioIds": {"type": "array", "items": {"type": "string"}, "description": "A deep audit's finding: the scenarios it was derived from, the leading one first."},
+    "stepIds": {"type": "array", "items": {"type": "string"}, "description": "The flow steps the finding's stories pass through; the page links to them."},
+    "concept": {"type": "object", "description": "From the leading scenario: pattern (a concept id or null) and scope (STEP or CONCEPT)."},
+    "tier": {"enum": ["DEEP"], "description": "Set on findings a deep audit derived."},
     "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"], "description": "How bad if true."},
     "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"], "description": "How sure it is real. Any NOT_CHECKED mitigation or unverifiable evidence caps it at MEDIUM."},
-    "status": {"enum": ["CANDIDATE", "VERIFIED", "DISPROVED", "DUPLICATE"]},
-    "failureScenario": {"type": "string", "description": "One concrete interleaving, naming the two points between which the failure happens."},
+    "status": {"enum": ["CANDIDATE", "VERIFIED", "DISPROVED", "DUPLICATE"], "description": "A deep audit's finding is VERIFIED when one of its scenarios was verified, DISPROVED when all were disproved."},
+    "failureScenario": {"type": "string", "description": "One concrete interleaving, naming the two points between which the failure happens. For a deep audit's finding it is generated from the leading scenario's story."},
     "evidence": {
       "type": "array",
       "minItems": 1,
@@ -42,7 +46,7 @@
         "required": ["name", "result"],
         "properties": {
           "name": {"type": "string"},
-          "result": {"enum": ["FOUND", "NOT_FOUND", "NOT_CHECKED"]},
+          "result": {"enum": ["FOUND", "PARTIAL", "NOT_FOUND", "NOT_CHECKED"]},
           "where": {"type": "string", "description": "Where it was looked for."},
           "evidence": {"type": "object"}
         }
@@ -59,6 +63,6 @@
     },
     "recommendation": {"type": "string"},
     "verification": {"type": "array", "minItems": 1, "items": {"type": "string"}, "description": "Failure-injection or test steps that would prove or disprove the finding."},
-    "dedupeKey": {"type": "string", "description": "ruleId|flowId|primary symbol; equal keys are one finding."}
+    "dedupeKey": {"type": "string", "description": "ruleId|flowId|primary symbol, or for a deep audit's finding ruleId|flowId|brokenAt step; equal keys are one finding."}
   }
 }

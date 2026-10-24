@@ -239,7 +239,7 @@ public final class ModuleFacts {
     }
 
     private static Effect fact(String detail, String file, int line, String symbol) {
-        return new Effect(Signals.CONFIG, detail, file, line, symbol, 0, false, false, null, null, null);
+        return new Effect(Signals.CONFIG, detail, file, line, symbol, 0, false, false, null, null, null, null);
     }
 
     /** The table an entity or document maps to, lower case; null for other types. */

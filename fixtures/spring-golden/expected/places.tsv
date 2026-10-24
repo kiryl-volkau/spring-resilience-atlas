@@ -21,7 +21,7 @@ dual-write-in-tx	src/main/java/com/acme/care/shared/patterns/PatternsController.
 executor-unbounded-queue	src/main/java/com/acme/care/billing/config/BillingInfrastructureConfig.java	BillingInfrastructureConfig.billingExecutor	MEDIUM	BillingWebhookController.receiveStripeEvent,PatternsController.fire
 feign-default-timeouts	src/main/resources/application.yml	spring.cloud.openfeign.client.config	LOW	LedgerCloseJob.onDayClosed,LedgerController.adjust,LedgerSyncConsumer.onPostingRequested,LedgerWarmup.run
 flush-on-shutdown	src/main/java/com/acme/care/billing/ledger/LedgerBuffer.java	LedgerBuffer.flush	MEDIUM	LedgerBuffer.flush
-graceful-shutdown-off	src/main/resources/application.yml	server.shutdown	MEDIUM	BillingAdminController.cancelCharge,BillingAdminController.retryCharge,BillingWebhookController.receiveStripeEvent,LedgerController.adjust,LedgerController.issueStatement,LedgerController.receiveBankTransfer,PatternsController.afterCommit,PatternsController.fire,PatternsController.overload,PatternsController.pumped,PatternsController.txTemplate,PatternsController.wrapped,PaypalWebhookController.receivePaypalEvent
+graceful-shutdown-off	src/main/resources/application.yml	server.shutdown	MEDIUM	BillingAdminController.cancelCharge,BillingAdminController.retryCharge,BillingWebhookController.receiveStripeEvent,CrmContactSyncController.syncContact,LedgerController.adjust,LedgerController.issueStatement,LedgerController.receiveBankTransfer,PatternsController.afterCommit,PatternsController.fire,PatternsController.overload,PatternsController.pumped,PatternsController.txTemplate,PatternsController.wrapped,PaypalWebhookController.receivePaypalEvent
 handoff-after-ack	src/main/java/com/acme/care/billing/service/StripeWebhookService.java	StripeWebhookService.handle	HIGH	BillingWebhookController.receiveStripeEvent
 handoff-after-ack	src/main/java/com/acme/care/shared/patterns/PatternsController.java	PatternsController.fire	HIGH	PatternsController.fire
 http-client-without-timeout	src/main/java/com/acme/care/billing/config/BillingInfrastructureConfig.java	BillingInfrastructureConfig.paymentProviderRestTemplate	MEDIUM	BillingAdminController.retryCharge,InvoiceEventListener.onInvoiceEvent
@@ -35,6 +35,7 @@ nested-requires-new-in-tx	src/main/java/com/acme/care/billing/ledger/LedgerAudit
 no-hint	src/main/java/com/acme/care/billing/ledger/LedgerCloseJob.java	LedgerCloseJob.onDayClosed	NONE	LedgerCloseJob.onDayClosed
 no-hint	src/main/java/com/acme/care/billing/service/TariffCache.java	TariffCache.load	NONE	TariffCache.load
 no-hint	src/main/java/com/acme/care/billing/web/BillingAdminController.java	BillingAdminController.cancelCharge	NONE	BillingAdminController.cancelCharge
+no-hint	src/main/java/com/acme/care/crm/web/CrmContactSyncController.java	CrmContactSyncController.syncContact	NONE	CrmContactSyncController.syncContact
 no-hint	src/main/java/com/acme/care/dailycare/media/MediaUploadSpool.java	MediaUploadSpool.flushPending	NONE	MediaUploadSpool.flushPending
 no-hint	src/main/java/com/acme/care/dailycare/nursecall/CallBellEscalator.java	CallBellEscalator.start	NONE	CallBellEscalator.start,CallBellEscalator.start
 no-hint	src/main/java/com/acme/care/dailycare/printing/LabelPrinterPool.java	LabelPrinterPool.afterPropertiesSet	NONE	LabelPrinterPool.afterPropertiesSet

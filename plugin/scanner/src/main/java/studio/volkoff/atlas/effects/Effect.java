@@ -16,9 +16,10 @@ import java.util.Map;
  * @param txOwnerAt    {@code file:line} of that method's declaration; null with {@code txOwner}
  * @param caughtAt     {@code file:line} of a catch on the path that swallows this effect's failure: it catches
  *                     everything, or the failures of remote calls, and neither rethrows nor answers an error; else null
+ * @param target       for a message send, {key, basis, status, via}: the queue, topic or binding it goes to; else null
  */
 public record Effect(String signal, String detail, String file, int line, String symbol, int hop, boolean inTx,
-                     boolean inReadOnlyTx, String txOwner, String txOwnerAt, String caughtAt) {
+                     boolean inReadOnlyTx, String txOwner, String txOwnerAt, String caughtAt, Map<String, Object> target) {
 
     public Map<String, Object> toMap() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -38,6 +39,9 @@ public record Effect(String signal, String detail, String file, int line, String
         }
         if (caughtAt != null) {
             m.put("caughtAt", caughtAt);
+        }
+        if (target != null) {
+            m.put("target", target);
         }
         return m;
     }

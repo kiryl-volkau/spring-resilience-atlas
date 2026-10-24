@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
  *   <li>the snippet, whitespace-normalised, must occur within two lines of {@code line};</li>
  *   <li>an evidence object with a missing or mistyped field is MALFORMED;</li>
  *   <li>a snippet without a non-keyword identifier ({@code }}, {@code public}) is TRIVIAL;</li>
- *   <li>every hop and boundary of a flow must carry evidence;</li>
+ *   <li>every hop and boundary of a version 1 flow, and every step of a version 2 one, must carry evidence;</li>
  *   <li>a document without any evidence fails.</li>
  * </ul>
  */
@@ -150,7 +150,7 @@ public final class EvidenceVerifier {
             return 0;
         }
         int count = 0;
-        for (String key : List.of("hops", "boundaries")) {
+        for (String key : List.of("hops", "boundaries", "steps")) {
             if (doc.get(key) instanceof List<?> list) {
                 for (int i = 0; i < list.size(); i++) {
                     if (!(list.get(i) instanceof Map<?, ?> m) || !(m.get("evidence") instanceof Map<?, ?>)) {

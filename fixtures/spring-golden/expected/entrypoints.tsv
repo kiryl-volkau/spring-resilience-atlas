@@ -200,3 +200,4 @@ LIFECYCLE	APPLICATION_RUNNER	LedgerWarmup	LedgerWarmup.run	STATIC
 LIFECYCLE	PRE_DESTROY	LedgerBuffer	LedgerBuffer.flush	STATIC
 MESSAGING	KAFKA	care.billing.ledger-postings	LedgerSyncConsumer.onPostingRequested	STATIC
 SCHEDULED	CRON	0 0 1 * * *	LedgerCloseJob.closeDay	STATIC
+HTTP	POST	/api/crm/contacts/{contactId}/sync	CrmContactSyncController.syncContact	STATIC

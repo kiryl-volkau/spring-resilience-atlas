@@ -1,0 +1,59 @@
+{
+  "about": "Failure patterns of a whole flow that no single place shows. The scanner matches each one's structure over a recorded flow (version 2); the scenario author writes at least one scenario per matched pattern, HARMLESS when it does not bite. Reliability wording only.",
+  "concepts": {
+    "ack-before-durable": {
+      "name": "Answered before the work is durable",
+      "hypothesis": "The caller is told the work was accepted while part of it exists only in memory or in an open transaction; a crash then loses it and nobody asks again.",
+      "questions": "Which effects of this entry point are not durable when the answer goes out? Who would notice their loss, and would the caller retry?",
+      "triggers": ["RESTART_DEPLOY", "CRASH_AFTER_COMMIT"],
+      "stepFix": "persist the pending work in the same transaction before answering",
+      "conceptFix": "make the answer depend only on durable state: an outbox or a work table that a job drains",
+      "verify": "Stop the JVM right after the answer; after a restart every accepted effect must still happen."
+    },
+    "external-effect-inside-local-tx": {
+      "name": "External effect inside a local transaction",
+      "hypothesis": "An effect in another system (a charge, a message, an account) is made inside a local transaction; a rollback afterwards cannot undo it, and a retry repeats it.",
+      "questions": "Is the external effect reversible or idempotent by a key? What happens to it when the local commit fails? Does a retry or redelivery make it again?",
+      "triggers": ["COMMIT_FAILS", "PROVIDER_SLOW", "REDELIVERY"],
+      "stepFix": "send an idempotency key with the external call",
+      "conceptFix": "record the intent with a client-generated key and commit it before calling out, then complete the local state from the result",
+      "verify": "Make the local commit fail after the external call succeeds; the external effect must not be repeated by the retry, and the local state must be repaired."
+    },
+    "fan-out-without-outbox": {
+      "name": "One transaction tells several systems",
+      "hypothesis": "One transaction sends to or calls more than one other system; a failure between them leaves some told and some not, with nothing to finish the rest.",
+      "questions": "Can any of the sends or calls fail after another succeeded? Which side would see the inconsistency, and is there a reconciliation?",
+      "triggers": ["PARTIAL_FAILURE_IN_FANOUT", "COMMIT_FAILS"],
+      "stepFix": "mark each target as done in the database and retry the ones not done",
+      "conceptFix": "write all outgoing messages to an outbox in the transaction and relay them after the commit",
+      "verify": "Make the second target fail after the first one succeeded; every target must eventually agree."
+    },
+    "at-least-once-without-idempotent-sink": {
+      "name": "Repeated delivery reaches a sink that repeats",
+      "hypothesis": "Work arrives by at-least-once delivery (a broker or a retried webhook) and ends in a write or call that has no duplicate check, so a redelivery repeats it.",
+      "questions": "When does the sender deliver again (timeout, error, crash before the ack)? Which write or call repeats, and does anything key it by the message or event id?",
+      "triggers": ["REDELIVERY", "DUPLICATE_DELIVERY", "CONCURRENT_DELIVERY"],
+      "stepFix": "store the message or event id with a unique constraint in the same transaction as the work and skip duplicates",
+      "conceptFix": "key every effect down the chain by one business id that each hop checks",
+      "verify": "Deliver the same message twice, and twice at once; the effect must happen once."
+    },
+    "uncorrelated-callback": {
+      "name": "Callback that cannot be matched to its request",
+      "hypothesis": "A call to an external system is answered later by a webhook or callback, and nothing stores the request's id where the callback handler looks it up, so a callback cannot be matched, is applied twice, or arrives for a request that failed.",
+      "questions": "What id does the external system send back? Does the outbound side store it before calling? Does the callback handler look it up before acting?",
+      "triggers": ["DUPLICATE_DELIVERY", "OUT_OF_ORDER", "COMMIT_FAILS"],
+      "stepFix": "look the callback up by the stored external id and ignore unknown or repeated ones",
+      "conceptFix": "store a pending request with its external id before the call, and let the callback move it to its final state",
+      "verify": "Send the callback twice, and once for a request whose local commit failed; each must be handled once or rejected visibly."
+    },
+    "callback-before-commit": {
+      "name": "Callback arrives before the local commit",
+      "hypothesis": "The external call is made inside a transaction that commits after it; the external system can answer by webhook before the commit, when the row the callback needs is not visible yet.",
+      "questions": "How fast can the callback come? What does its handler do when the row is missing: fail and get redelivered, or drop the event?",
+      "triggers": ["OUT_OF_ORDER", "COMMIT_FAILS"],
+      "stepFix": "make the callback handler fail with a retryable status when the row is missing",
+      "conceptFix": "commit the pending state before calling out, so the callback always finds it",
+      "verify": "Delay the local commit and deliver the callback first; it must be applied once the commit lands, never lost."
+    }
+  }
+}

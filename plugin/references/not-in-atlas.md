@@ -22,3 +22,5 @@ that the atlas does not cover it and how to check instead.
 | Configuration outside the main `application*` and `bootstrap*` files: environment variables, command-line arguments, a config server, Kubernetes or Helm values, profiles named like `local`, `dev` or `test`. Config rules judge only what those files say | read the deployment's environment and manifests |
 | Migrations other than the newest under each migration root, and Liquibase changes written over several YAML lines | open the migration files |
 | Which `@Bean` a field gets when several of its type exist and no qualifier or name decides: the timeout and executor checks then say nothing | open the configuration class |
+| Send destinations set at run time, through a field-injected `@Value`, a properties object or a method argument: the send's `target` is `UNKNOWN` and no link forms | `flow candidates` lists what did resolve; read the sender for the rest |
+| Rows one entry point writes and a job or poller picks up later, and providers known only by a client class name: no candidate link forms | the flow tracer can add such a link with `basis: AGENT` |

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 2,
+  "id": "FLOW-billing-stripe-webhook",
+  "title": "Stripe invoice webhook to charge",
+  "summary": "A Stripe invoice event is recorded and queued; the consumer creates the invoice and charges the payer.",
+  "entries": [
+    {"segment": "A", "entrypointId": "EP-9df71973", "trigger": "Stripe"},
+    {"segment": "B", "entrypointId": "EP-366d9b4b", "trigger": "SQS care-invoice-events"}
+  ],
+  "participants": [
+    {"id": "stripe", "kind": "EXTERNAL", "name": "Stripe"},
+    {"id": "ctl", "kind": "ENTRY", "name": "BillingWebhookController", "entrypointId": "EP-9df71973"},
+    {"id": "svc", "kind": "BEAN", "name": "StripeWebhookService"},
+    {"id": "receipt", "kind": "STORE", "name": "billing_event_receipt", "detail": "EventReceiptRepository"},
+    {"id": "sqs", "kind": "BROKER", "name": "care-invoice-events", "detail": "SQS"},
+    {"id": "exec", "kind": "EXECUTOR", "name": "billingExecutor", "detail": "4 threads, unbounded in-memory queue, no drain on shutdown"},
+    {"id": "recon", "kind": "BEAN", "name": "CustomerReconciliationService"},
+    {"id": "customer", "kind": "STORE", "name": "billing_customer"},
+    {"id": "lst", "kind": "ENTRY", "name": "InvoiceEventListener", "entrypointId": "EP-366d9b4b"},
+    {"id": "inv", "kind": "BEAN", "name": "InvoiceService"},
+    {"id": "invoice", "kind": "STORE", "name": "billing_invoice", "detail": "InvoiceRepository"},
+    {"id": "ppc", "kind": "BEAN", "name": "PaymentProviderClient"},
+    {"id": "provider", "kind": "EXTERNAL", "name": "Payment provider"},
+    {"id": "events", "kind": "BEAN", "name": "after-commit listeners", "detail": "InvoiceNotificationListener, LedgerPostingListener"}
+  ],
+  "steps": [
+    {"id": "a1", "segment": "A", "from": "stripe", "to": "ctl", "kind": "TRIGGER", "label": "POST /webhooks/stripe", "thread": "request", "evidence": {"file": "src/main/java/com/acme/care/billing/web/BillingWebhookController.java", "line": 28, "snippet": "public ResponseEntity<Void> receiveStripeEvent(@RequestHeader(\"Stripe-Signature\") String signature,"}},
+    {"id": "a2", "segment": "A", "from": "ctl", "to": "svc", "kind": "CALL", "label": "handle(signature, payload)", "evidence": {"file": "src/main/java/com/acme/care/billing/web/BillingWebhookController.java", "line": 31, "snippet": "webhookService.handle(signature, payload);"}},
+    {"id": "a3", "segment": "A", "from": "svc", "to": "svc", "kind": "TX_BEGIN", "label": "T1 begins", "tx": "T1", "evidence": {"file": "src/main/java/com/acme/care/billing/service/StripeWebhookService.java", "line": 45, "snippet": "@Transactional"}},
+    {"id": "a4", "segment": "A", "from": "svc", "to": "receipt", "kind": "DB_WRITE", "label": "save(receipt)", "tx": "T1", "durable": false, "evidence": {"file": "src/main/java/com/acme/care/billing/service/StripeWebhookService.java", "line": 50, "snippet": "eventReceiptRepository.save(receipt);"}, "notes": "no lookup by the provider event id and no unique constraint"},
+    {"id": "a5", "segment": "A", "from": "svc", "to": "sqs", "kind": "MESSAGE_SEND", "label": "send(care-invoice-events)", "tx": "T1", "durable": true, "evidence": {"file": "src/main/java/com/acme/care/billing/service/StripeWebhookService.java", "line": 53, "snippet": "sqsTemplate.send(invoiceQueue, payload);"}, "notes": "sent before T1 commits"},
+    {"id": "a6", "segment": "A", "from": "svc", "to": "exec", "kind": "ASYNC_FORK", "label": "submit(reconcileCustomer)", "tx": "T1", "durable": false, "sync": false, "evidence": {"file": "src/main/java/com/acme/care/billing/service/StripeWebhookService.java", "line": 56, "snippet": "executor.submit(() -> reconciliationService.reconcileCustomer(event.getAccount(), event.getId()));"}},
+    {"id": "a7", "segment": "A", "from": "svc", "to": "svc", "kind": "TX_COMMIT", "label": "T1 commits", "tx": "T1", "durable": true, "evidence": {"file": "src/main/java/com/acme/care/billing/service/StripeWebhookService.java", "line": 58, "snippet": "log.info(\"Accepted Stripe event {} ({})\", event.getId(), event.getType());"}},
+    {"id": "a8", "segment": "A", "from": "ctl", "to": "stripe", "kind": "RESPONSE", "label": "200 OK", "evidence": {"file": "src/main/java/com/acme/care/billing/web/BillingWebhookController.java", "line": 36, "snippet": "return ResponseEntity.ok().build();"}},
+    {"id": "a9", "segment": "A", "from": "exec", "to": "recon", "kind": "ASYNC_RUN", "label": "reconcileCustomer(account, eventId)", "thread": "exec", "evidence": {"file": "src/main/java/com/acme/care/billing/service/CustomerReconciliationService.java", "line": 19, "snippet": "public void reconcileCustomer(String providerAccountId, String providerEventId) {"}},
+    {"id": "a10", "segment": "A", "from": "recon", "to": "customer", "kind": "DB_WRITE", "label": "update billing_customer", "thread": "exec", "durable": true, "evidence": {"file": "src/main/java/com/acme/care/billing/service/CustomerReconciliationService.java", "line": 20, "snippet": "int updated = jdbcTemplate.update("}},
+    {"id": "b1", "segment": "B", "from": "sqs", "to": "lst", "kind": "MESSAGE_RECEIVE", "label": "onInvoiceEvent(message)", "thread": "listener", "evidence": {"file": "src/main/java/com/acme/care/billing/messaging/InvoiceEventListener.java", "line": 24, "snippet": "@SqsListener(\"care-invoice-events\")"}},
+    {"id": "b2", "segment": "B", "from": "lst", "to": "inv", "kind": "CALL", "label": "createInvoiceFromProviderEvent", "evidence": {"file": "src/main/java/com/acme/care/billing/messaging/InvoiceEventListener.java", "line": 29, "snippet": "invoiceService.createInvoiceFromProviderEvent("}},
+    {"id": "b3", "segment": "B", "from": "inv", "to": "inv", "kind": "TX_BEGIN", "label": "T2 begins", "tx": "T2", "evidence": {"file": "src/main/java/com/acme/care/billing/service/InvoiceService.java", "line": 29, "snippet": "@Transactional"}},
+    {"id": "b4", "segment": "B", "from": "inv", "to": "invoice", "kind": "DB_WRITE", "label": "save(draft invoice)", "tx": "T2", "durable": false, "evidence": {"file": "src/main/java/com/acme/care/billing/service/InvoiceService.java", "line": 31, "snippet": "Invoice invoice = invoiceRepository.save("}, "notes": "a new UUID per call: nothing ties the row to the provider event"},
+    {"id": "b5", "segment": "B", "from": "inv", "to": "ppc", "kind": "CALL", "label": "createCharge(customer, amount)", "tx": "T2", "evidence": {"file": "src/main/java/com/acme/care/billing/service/InvoiceService.java", "line": 34, "snippet": "ChargeResult charge = paymentProviderClient.createCharge(providerCustomerId, amountMinor, currency);"}},
+    {"id": "b6", "segment": "B", "from": "ppc", "to": "provider", "kind": "EXTERNAL_CALL", "label": "POST /v1/charges", "tx": "T2", "durable": true, "evidence": {"file": "src/main/java/com/acme/care/billing/client/PaymentProviderClient.java", "line": 30, "snippet": "return restTemplate.postForObject(baseUrl + \"/v1/charges\", body, ChargeResult.class);"}, "notes": "no idempotency key; the RestTemplate has no timeouts"},
+    {"id": "b7", "segment": "B", "from": "inv", "to": "events", "kind": "EVENT_PUBLISH", "label": "InvoiceIssuedEvent", "tx": "T2", "evidence": {"file": "src/main/java/com/acme/care/billing/service/InvoiceService.java", "line": 37, "snippet": "events.publishEvent(new InvoiceIssuedEvent(invoice.getId(), providerCustomerId, amountMinor, currency));"}},
+    {"id": "b8", "segment": "B", "from": "inv", "to": "inv", "kind": "TX_COMMIT", "label": "T2 commits", "tx": "T2", "durable": true, "evidence": {"file": "src/main/java/com/acme/care/billing/service/InvoiceService.java", "line": 38, "snippet": "return invoice;"}},
+    {"id": "b9", "segment": "B", "from": "lst", "to": "sqs", "kind": "MESSAGE_ACK", "label": "ack on return", "evidence": {"file": "src/main/java/com/acme/care/billing/messaging/InvoiceEventListener.java", "line": 25, "snippet": "public void onInvoiceEvent(String message) throws Exception {"}, "notes": "an exception leaves the message for redelivery"}
+  ],
+  "transactions": [
+    {"id": "T1", "owner": "StripeWebhookService.handle", "begin": "a3", "commit": "a7", "propagation": "REQUIRED"},
+    {"id": "T2", "owner": "InvoiceService.createInvoiceFromProviderEvent", "begin": "b3", "commit": "b8", "propagation": "REQUIRED"}
+  ],
+  "links": [
+    {"kind": "SEND_CONSUME", "fromStep": "a5", "toStep": "b1", "key": "care-invoice-events", "basis": "CONFIG_KEY", "decision": {"accepted": true, "reason": "same queue; the listener parses the Stripe payload the webhook forwards"}, "evidence": [{"file": "src/main/java/com/acme/care/billing/service/StripeWebhookService.java", "line": 36, "snippet": "@Value(\"${care.billing.invoice-queue:care-invoice-events}\") String invoiceQueue) {"}, {"file": "src/main/java/com/acme/care/billing/messaging/InvoiceEventListener.java", "line": 24, "snippet": "@SqsListener(\"care-invoice-events\")"}]},
+    {"kind": "OUTBOUND_WEBHOOK", "fromStep": "b6", "toStep": "a1", "key": "stripe", "basis": "PROVIDER_TOKEN", "candidate": "LK-ae47bce5", "decision": {"accepted": true, "reason": "the charge is created at Stripe, which reports it to the same webhook; nothing ties that event back to the invoice"}, "evidence": [{"file": "src/main/java/com/acme/care/billing/client/PaymentProviderClient.java", "line": 20, "snippet": "@Value(\"${care.billing.stripe.base-url}\") String baseUrl) {"}, {"file": "src/main/java/com/acme/care/billing/web/BillingWebhookController.java", "line": 28, "snippet": "public ResponseEntity<Void> receiveStripeEvent(@RequestHeader(\"Stripe-Signature\") String signature,"}]},
+    {"kind": "EVENT_LISTEN", "fromStep": "b7", "toStep": null, "key": "InvoiceIssuedEvent", "basis": "EVENT_TYPE", "candidate": "LK-2929e5d1", "decision": {"accepted": false, "reason": "an after-commit listener with a flow of its own: it e-mails the payer"}, "evidence": [{"file": "src/main/java/com/acme/care/billing/events/InvoiceNotificationListener.java", "line": 21, "snippet": "@TransactionalEventListener"}]},
+    {"kind": "EVENT_LISTEN", "fromStep": "b7", "toStep": null, "key": "InvoiceIssuedEvent", "basis": "EVENT_TYPE", "candidate": "LK-a5b902e0", "decision": {"accepted": false, "reason": "runs only after a rollback, and only logs"}, "evidence": [{"file": "src/main/java/com/acme/care/billing/events/InvoiceNotificationListener.java", "line": 26, "snippet": "@TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)"}]},
+    {"kind": "EVENT_LISTEN", "fromStep": "b7", "toStep": null, "key": "InvoiceIssuedEvent", "basis": "EVENT_TYPE", "candidate": "LK-37b1ebf3", "decision": {"accepted": false, "reason": "an after-commit listener with a flow of its own: it posts to the ledger"}, "evidence": [{"file": "src/main/java/com/acme/care/billing/ledger/LedgerPostingListener.java", "line": 16, "snippet": "@TransactionalEventListener"}]}
+  ],
+  "businessParts": [
+    {"id": "BP-1", "name": "Record the provider event", "segment": "A", "steps": ["a1", "a2", "a3", "a4", "a7", "a8"], "outcome": "a receipt row; Stripe told 200", "ownsState": ["billing_event_receipt"]},
+    {"id": "BP-2", "name": "Hand the invoice on", "segment": "A", "steps": ["a5"], "outcome": "a message on care-invoice-events", "ownsState": []},
+    {"id": "BP-3", "name": "Reconcile the customer", "segment": "A", "steps": ["a6", "a9", "a10"], "outcome": "billing_customer has the latest provider event", "ownsState": ["billing_customer"]},
+    {"id": "BP-4", "name": "Create the invoice and charge", "segment": "B", "steps": ["b1", "b2", "b3", "b4", "b5", "b6", "b8", "b9"], "outcome": "an invoice row, charged at the provider", "ownsState": ["billing_invoice", "provider charge"]},
+    {"id": "BP-5", "name": "Notify and post to the ledger", "segment": "B", "steps": ["b7"], "outcome": "an e-mail and a ledger posting", "ownsState": ["billing_ledger_posting"]}
+  ],
+  "acknowledgements": [
+    {"segment": "A", "stepId": "a8", "durableBefore": false, "description": "Stripe gets 200 after T1 commits, while the reconciliation still waits in memory"},
+    {"segment": "B", "stepId": "b9", "durableBefore": true, "description": "SQS deletes the message after T2 commits; a thrown exception leaves it for redelivery"}
+  ],
+  "stoppedAt": [
+    {"symbol": "InvoiceNotificationListener.onInvoiceIssued", "reason": "after-commit listeners are entry points of their own"}
+  ],
+  "sourceBudget": {"filesOpened": 6, "limit": 12},
+  "openQuestions": []
+}

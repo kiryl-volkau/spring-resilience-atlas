@@ -18,12 +18,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Method bodies cut from the working tree by line, for evidence packets and fingerprints. */
-final class Slices {
+/** Method bodies cut from the working tree by line, for evidence packets, flows and fingerprints. */
+public final class Slices {
 
     /** Lines {@code from..to} of {@code file}, inclusive, 1-based; {@code text} holds exactly those lines. */
-    record Slice(String file, String method, int from, int to, List<String> text) {
-        String label() {
+    public record Slice(String file, String method, int from, int to, List<String> text) {
+        public String label() {
             return file + ":" + from + "-" + to;
         }
     }
@@ -37,12 +37,12 @@ final class Slices {
     private final Map<String, List<MethodDecl>> methods = new HashMap<>();
     private final Map<String, Map<MethodDecl, String>> owners = new HashMap<>();
 
-    Slices(Path repo) {
+    public Slices(Path repo) {
         this.repo = repo;
     }
 
     /** Parses the Java files among {@code files} in one javac task; other files are only read. */
-    void load(Collection<String> files) throws Exception {
+    public void load(Collection<String> files) throws Exception {
         List<Workspace.SourceEntry> entries = new ArrayList<>();
         for (String f : new LinkedHashSet<>(files)) {
             if (lines.containsKey(f)) {
@@ -85,7 +85,7 @@ final class Slices {
      * The innermost method of {@code file} whose declaration spans {@code line}. A file javac could
      * not parse, or a line outside any method, gets the {@value #FALLBACK} lines from the line.
      */
-    Slice enclosing(String file, int line) throws IOException {
+    public Slice enclosing(String file, int line) throws IOException {
         List<String> text = lines.get(file);
         if (text == null) {
             return null;
@@ -140,7 +140,7 @@ final class Slices {
     }
 
     /** The slice's code with whitespace collapsed: what a fingerprint hashes, so reindenting or moving it changes nothing. */
-    static String normalised(Slice s) {
+    public static String normalised(Slice s) {
         return String.join(" ", s.text()).replaceAll("\\s+", " ").trim();
     }
 }

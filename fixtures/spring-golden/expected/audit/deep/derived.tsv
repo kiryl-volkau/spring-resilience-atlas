@@ -1,0 +1,11 @@
+finding	rule	status	severity	confidence	scope	operation	scenarios	blockedBy	failureScenario
+F-48320799	remote-in-tx	VERIFIED	CRITICAL	HIGH	CONCEPT	EP-366d9b4b	[SC-69245ab5]	V2 renames billing_invoice.status while Invoice still maps status, so the invoice save fails before the charge	1. draft invoice written in T2 (not committed) 2. provider charges the payer; money moved 3. commit of T2 fails: the invoice row is gone, the charge is not 4. listener throws; SQS keeps the message 5. SQS redelivers after the visibility timeout 6. a second POST /v1/charges, no idempotency key: the payer is charged twice → DUPLICATED: the charge; and one charge has no invoice
+F-96c754e4	handoff-after-ack	VERIFIED	HIGH	HIGH	STEP	EP-9df71973	[SC-c07cf438]	-	1. receipt saved in T1 2. reconciliation submitted to billingExecutor's in-memory queue 3. Stripe gets 200: it will not redeliver 4. the JVM stops before a pool thread takes the task 5. reconcileCustomer never runs 6. billing_customer keeps the old last_provider_event_id; nothing notices → LOST: customer reconciliation for this event
+F-7f9b2881	webhook-not-idempotent	CANDIDATE	HIGH	MEDIUM	STEP	EP-9df71973	[SC-8726685d]	-	1. Stripe sends the same invoice event a second time 2. a second receipt row: nothing looks up the event id 3. the invoice event goes to the queue again 4. the consumer creates a second invoice and charges again → DUPLICATED: the invoice and the charge
+place	tier	verdict	findings
+PL-2ba53763	VERIFIED	CONFIRMED	[F-96c754e4]
+PL-a39aeb08	DEEP	CONFIRMED	[F-7f9b2881]
+PL-6a66916e	VERIFIED	CONFIRMED	[F-48320799]
+operation	tier	colour	findings	summary
+EP-9df71973	VERIFIED	GREY	[F-96c754e4, F-7f9b2881]	Restart after the 200: reconciliation lost: the queue is in memory and the only party that could retry, Stripe, was already told 200; 3 not checked
+EP-366d9b4b	VERIFIED	GREY	[F-48320799]	Commit fails after the charge; redelivery charges again: an irreversible external effect sits inside a local transaction, and neither the consumer nor the provider call carries an idempotency key; 2 not checked

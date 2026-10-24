@@ -1,12 +1,13 @@
 package studio.volkoff.atlas.report;
 
 import studio.volkoff.atlas.audit.Derive;
+import studio.volkoff.atlas.flow.Flows;
+import studio.volkoff.atlas.flow.History;
 import studio.volkoff.atlas.json.Json;
 import studio.volkoff.atlas.query.AtlasStore;
 import studio.volkoff.atlas.scan.Scanner;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
@@ -49,6 +50,8 @@ public final class ReportBuilder {
     private static final Map<String, Integer> SEVERITY = Map.of("CRITICAL", 4, "HIGH", 3, "MEDIUM", 2, "LOW", 1);
     private static final Map<String, Integer> CONFIDENCE = Map.of("HIGH", 3, "MEDIUM", 2, "LOW", 1);
     private static final Set<String> COLOURS = Set.of("RED", "YELLOW", "GREEN", "GREY");
+    /** Participants that join two flows on the flow map: state or systems both touch, not their beans. */
+    private static final Set<String> MAP_KINDS = Set.of("STORE", "BROKER", "EXTERNAL");
     private static final int SNIPPET_MAX = 200;
     private static final java.util.regex.Pattern SAFE_ID = java.util.regex.Pattern.compile("[A-Za-z0-9._-]+");
     /** Summary bucket for operations whose level is NONE only because their code was never read. */
@@ -206,7 +209,7 @@ public final class ReportBuilder {
             }
             Map<String, Object> v = placeVerdicts.get(p.id());
             if (v != null) {
-                for (String k : List.of("verdict", "confidence", "tier", "status", "summary", "reason", "foundRule", "remaining", "downgraded", "draftVerdict")) {
+                for (String k : List.of("verdict", "confidence", "tier", "status", "summary", "reason", "foundRule", "remaining", "downgraded", "draftVerdict", "flowId", "findingIds")) {
                     if (v.get(k) != null) {
                         m.put(k, v.get(k));
                     }
@@ -243,32 +246,40 @@ public final class ReportBuilder {
         data.put("files", files);
         data.put("ops", ops);
         data.put("places", places);
+        try {
+            Flows recorded = new Flows(o.repo(), o.atlasDir(), o.auditDir(), o.flowsDir());
+            data.put("flowIndex", recorded.writeIndex());
+            Map<String, Map<String, Object>> shared = new LinkedHashMap<>();
+            recorded.all().forEach((id, doc) -> {
+                if (Flows.v2(doc)) {
+                    flows.put(id, doc);
+                    for (Map<String, Object> p : maps(doc.get("participants"))) {
+                        if (MAP_KINDS.contains(String.valueOf(p.get("kind")))) {
+                            Map<String, Object> s = shared.computeIfAbsent(String.valueOf(p.get("id")), k -> new LinkedHashMap<>(Map.of(
+                                    "participantId", k, "kind", p.get("kind"), "name", p.get("name"), "flows", new ArrayList<String>())));
+                            @SuppressWarnings("unchecked")
+                            List<String> in = (List<String>) s.get("flows");
+                            if (!in.contains(id)) {
+                                in.add(id);
+                            }
+                        }
+                    }
+                }
+            });
+            data.put("flowMap", Map.of("shared", shared.values().stream().filter(s -> ((List<?>) s.get("flows")).size() > 1).toList()));
+            data.put("since", History.since(recorded));
+            Path from = o.out().toAbsolutePath().getParent();
+            Path to = o.flowsDir().toAbsolutePath();
+            data.put("flowsHref", to.getRoot().equals(from.getRoot()) ? from.relativize(to).toString().replace('\\', '/') : to.toUri().toString());
+        } catch (Exception e) {
+            auditProblems.add("the flows could not be read: " + e.getMessage());
+        }
         data.put("flows", flows);
 
-        // Escaping every "<" keeps "</script>" and "<!--" in snippets from ending the data block.
-        String payload = Json.write(data).replace("<", "\\u003c");
         Files.createDirectories(o.out().toAbsolutePath().getParent());
-        Files.writeString(o.out(), fill(template(), escapeHtml(String.valueOf(data.get("title"))), payload), StandardCharsets.UTF_8);
+        Files.writeString(o.out(), Page.fill(Page.template("report.html"), String.valueOf(data.get("title")), data), StandardCharsets.UTF_8);
 
         return summary(o.out(), ops, manifest, coverage);
-    }
-
-    /** Puts the title and the data into the template in one pass, so neither can inject into the other. */
-    private static String fill(String template, String title, String payload) {
-        StringBuilder out = new StringBuilder(template.length() + payload.length());
-        int i = 0;
-        while (true) {
-            int t = template.indexOf("__TITLE__", i);
-            int d = template.indexOf("__DATA__", i);
-            if (t < 0 && d < 0) {
-                break;
-            }
-            boolean titleFirst = t >= 0 && (d < 0 || t < d);
-            int at = titleFirst ? t : d;
-            out.append(template, i, at).append(titleFirst ? title : payload);
-            i = at + (titleFirst ? "__TITLE__".length() : "__DATA__".length());
-        }
-        return out.append(template.substring(i)).toString();
     }
 
     /** Findings name their operation, or belong to the verdict's flow or finding list. */
@@ -612,6 +623,9 @@ public final class ReportBuilder {
         }
         int i = line - 1;
         StringBuilder s = new StringBuilder(lines.get(i).strip());
+        if (!file.endsWith(".java") && !file.endsWith(".kt") && !file.endsWith(".groovy")) {
+            return s.length() > SNIPPET_MAX ? s.substring(0, SNIPPET_MAX) + "…" : s.toString();
+        }
         // An annotation alone says little: follow it with the declaration it is on, skipping the
         // other annotations in between.
         if (s.length() > 0 && s.charAt(0) == '@') {
@@ -680,18 +694,5 @@ public final class ReportBuilder {
             n = parent + "/" + n;
         }
         return n;
-    }
-
-    private static String template() throws IOException {
-        try (InputStream in = ReportBuilder.class.getResourceAsStream("/report/report.html")) {
-            if (in == null) {
-                throw new IllegalStateException("report template is missing from the scanner build");
-            }
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-    }
-
-    private static String escapeHtml(String s) {
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 }

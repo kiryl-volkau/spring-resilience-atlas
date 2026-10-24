@@ -17,9 +17,10 @@ architecture and gives different coverage on every run. This plugin instead:
 ![The report on the synthetic golden fixture](plugin/assets/report.png)
 
 > **Status: early.** The entry-point atlas, the effect analysis, the HTML report and the quick
-> check work: scanner, query CLI, the report, four phase-1 skills and the `audit` skill, which
-> checks every high and medium hint with a cheap model. The deep audit that verifies findings
-> is not built yet.
+> check work: scanner, query CLI, the report, the phase-1 skills and the `audit` skill, which
+> checks every high and medium hint with a cheap model. Traced flows get a page with a sequence
+> diagram. The deep audit (`audit --deep`), which writes failure scenarios on a traced flow and
+> has a second model try to disprove them, is new and measured only on the golden fixture.
 
 ## Install
 
@@ -182,8 +183,17 @@ is a funnel:
    the verdict. A mitigation that covers only part of the failure is PARTIAL and leaves the place
    CONFIRMED; a MITIGATED or REFUTED answer that names a failure still possible is stored as
    CONFIRMED or UNCERTAIN.
-4. **Deep audit, strong model** (next): the confirmed high places and the ones a user picks,
-   traced in full and checked by a verifier that tries to disprove each finding.
+4. **Deep audit, strong models** (`--deep`): the confirmed and uncertain high places, or a flow
+   or places the user names, grouped into flows. The `flow-tracer` traces a flow when no current
+   trace exists; the scanner matches flow-level failure patterns over it (answered before the
+   work is durable, an external effect inside a local transaction, a callback that cannot find
+   its request, and others in `audit/concepts.json`); the `scenario-author` writes each way the
+   flow breaks as a short story on the flow's own steps; and the `flow-verifier`, a different
+   model, tries to disprove the severe ones. The scanner checks every story against the flow and
+   the tree, derives one finding per rule or pattern and broken step, and decides whether one
+   step can close it or the design has to change. A finished deep run snapshots its findings;
+   the report and `flow diff` then say what was fixed, what is new and what changed without
+   being audited again.
 
 High and medium hints are checked by default. `--level LOW` adds the low ones, and `--level
 NONE` sweeps the operations that write, send or call out without any rule firing, asking the
@@ -216,7 +226,7 @@ which audit profiles actually ran against which commit.
 
 | Phase                | Skills                                                                                                                                                                                    |
 |----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1. Atlas (MVP)       | built: `atlas-bootstrap`, `entrypoint-catalog`, `domain-cartographer`, `critical-flow-tracer` (agent `flow-tracer`), `report`, `audit` (quick check, agent `place-checker`). Next: the deep audit and its verifier, `critical-flow-discovery` |
+| 1. Atlas (MVP)       | built: `atlas-bootstrap`, `entrypoint-catalog`, `domain-cartographer`, `critical-flow-tracer` (agent `flow-tracer`), `flow`, `report`, `audit` (quick check, agent `place-checker`; `--deep` with agents `scenario-author` and `flow-verifier`), flow history (`flow snapshot`, `flow diff`). Next: `critical-flow-discovery` |
 | 2. Reliability       | `durable-handoff-audit`, `transaction-dual-write-audit`, `messaging-reliability-audit`, `idempotency-retry-audit`, `async-execution-audit`, `external-dependency-resilience-audit`, `shutdown-deployment-audit` |
 | 3. Observability     | `observability-coverage-map`, `trace-continuity-audit`, `sli-alert-audit`, `logging-diagnostics-audit`, `production-evidence-correlator`, `recovery-reconciliation-audit`                |
 | 4. Verification      | `finding-verifier-deduper`, `failure-injection-test-designer`, `backlog-task-generator`, `coverage-ledger`                                                                               |
@@ -237,11 +247,13 @@ Only `plugin/` is installed. Everything else in the repository is for developing
 ```text
 plugin/                             the plugin users install
   .claude-plugin/plugin.json        plugin manifest
-  skills/<skill>/SKILL.md           atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, report, audit
-  agents/flow-tracer.md             forked agent behind critical-flow-tracer
+  skills/<skill>/SKILL.md           atlas-bootstrap, entrypoint-catalog, domain-cartographer, critical-flow-tracer, flow, report, audit
+  agents/flow-tracer.md             forked agent behind critical-flow-tracer, and the deep audit's trace step
   agents/place-checker.md           the quick check's judge, one batch of places per agent
+  agents/scenario-author.md         the deep audit's author of failure scenarios on one flow
+  agents/flow-verifier.md           the deep audit's verifier, which tries to disprove them
   scanner/                          atlas builder and query CLI: dependency-free Java, run from source by Launch.java
-  schemas/                          entry-point rules, and entrypoint/domain/flow/finding JSON schemas
+  schemas/                          entry-point rules, and entrypoint/domain/flow/scenario/finding JSON schemas
   references/                       the query CLI's commands and what the atlas cannot see
   evals/                            claude plugin eval cases
   assets/                           icon and screenshot

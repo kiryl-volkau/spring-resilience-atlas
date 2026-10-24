@@ -26,6 +26,34 @@ public final class Json {
         return out.toString();
     }
 
+    /**
+     * Like {@link #write}, but each member of the top object on its own line, and each element of a
+     * member that is a list of objects on its own line: a document people read and diff.
+     */
+    public static String pretty(Map<?, ?> top) {
+        StringBuilder out = new StringBuilder("{\n");
+        int i = 0;
+        for (Map.Entry<?, ?> e : top.entrySet()) {
+            out.append("  ");
+            writeString(String.valueOf(e.getKey()), out);
+            out.append(": ");
+            if (e.getValue() instanceof Collection<?> c && !c.isEmpty() && c.stream().allMatch(x -> x instanceof Map)) {
+                out.append("[\n");
+                int j = 0;
+                for (Object item : c) {
+                    out.append("    ");
+                    write(item, out);
+                    out.append(++j < c.size() ? ",\n" : "\n");
+                }
+                out.append("  ]");
+            } else {
+                write(e.getValue(), out);
+            }
+            out.append(++i < top.size() ? ",\n" : "\n");
+        }
+        return out.append("}\n").toString();
+    }
+
     private static void write(Object value, StringBuilder out) {
         if (value == null) {
             out.append("null");

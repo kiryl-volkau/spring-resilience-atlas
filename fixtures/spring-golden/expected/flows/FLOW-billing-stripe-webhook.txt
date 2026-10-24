@@ -1,0 +1,37 @@
+FLOW-billing-stripe-webhook  Stripe invoice webhook to charge
+A Stripe invoice event is recorded and queued; the consumer creates the invoice and charges the payer.
+   ~~ link OUTBOUND_WEBHOOK stripe from step 16 (PROVIDER_TOKEN, accepted, MEDIUM)
+== A  HTTP POST /api/billing/webhooks/stripe  BillingWebhookController.receiveStripeEvent  started by Stripe
+  1 S-323e93c5  TRIGGER          Stripe -> BillingWebhookController  POST /webhooks/stripe
+  2 S-faf1bd37  CALL             BillingWebhookController -> StripeWebhookService  handle(signature, payload)
+  3 S-d0d3f8dd  TX_BEGIN         StripeWebhookService  T1 begins  [T1]
+  4 S-ea343712  DB_WRITE         StripeWebhookService -> billing_event_receipt  save(receipt)  [T1]  (not durable)
+  5 S-9b5f6d53  MESSAGE_SEND     StripeWebhookService -> care-invoice-events  send(care-invoice-events)  [T1]
+  6 S-39b15adc  ASYNC_FORK       StripeWebhookService -> billingExecutor  submit(reconcileCustomer)  [T1]  (not durable)
+  7 S-ff461eed  TX_COMMIT        StripeWebhookService  T1 commits  [T1]
+  8 S-0beff9ab  RESPONSE         BillingWebhookController -> Stripe  200 OK
+  9 S-23071bc3  ASYNC_RUN        billingExecutor -> CustomerReconciliationService  reconcileCustomer(account, eventId)
+ 10 S-bef5186a  DB_WRITE         CustomerReconciliationService -> billing_customer  update billing_customer
+   ~~ link SEND_CONSUME care-invoice-events from step 5 (CONFIG_KEY, accepted, HIGH)
+== B  MESSAGING SQS care-invoice-events  InvoiceEventListener.onInvoiceEvent  started by SQS care-invoice-events
+ 11 S-76022516  MESSAGE_RECEIVE  care-invoice-events -> InvoiceEventListener  onInvoiceEvent(message)
+ 12 S-e7ecf121  CALL             InvoiceEventListener -> InvoiceService  createInvoiceFromProviderEvent
+ 13 S-c4102b58  TX_BEGIN         InvoiceService  T2 begins  [T2]
+ 14 S-1d12fb1d  DB_WRITE         InvoiceService -> billing_invoice  save(draft invoice)  [T2]  (not durable)
+ 15 S-53cb900e  CALL             InvoiceService -> PaymentProviderClient  createCharge(customer, amount)  [T2]
+ 16 S-8f0fa9bb  EXTERNAL_CALL    PaymentProviderClient -> Payment provider  POST /v1/charges  [T2]
+ 17 S-a98575cd  EVENT_PUBLISH    InvoiceService -> after-commit listeners  InvoiceIssuedEvent  [T2]
+ 18 S-bc8b0923  TX_COMMIT        InvoiceService  T2 commits  [T2]
+ 19 S-413e4214  MESSAGE_ACK      InvoiceEventListener -> care-invoice-events  ack on return
+tx T1 StripeWebhookService.handle: steps 3-7
+tx T2 InvoiceService.createInvoiceFromProviderEvent: steps 13-18
+part BP-1 Record the provider event: steps 1,2,3,4,7,8 -> a receipt row; Stripe told 200
+part BP-2 Hand the invoice on: steps 5 -> a message on care-invoice-events
+part BP-3 Reconcile the customer: steps 6,9,10 -> billing_customer has the latest provider event
+part BP-4 Create the invoice and charge: steps 11,12,13,14,15,16,18,19 -> an invoice row, charged at the provider
+part BP-5 Notify and post to the ledger: steps 17 -> an e-mail and a ledger posting
+link EVENT_LISTEN InvoiceIssuedEvent from step 17: rejected. an after-commit listener with a flow of its own: it e-mails the payer
+link EVENT_LISTEN InvoiceIssuedEvent from step 17: rejected. runs only after a rollback, and only logs
+link EVENT_LISTEN InvoiceIssuedEvent from step 17: rejected. an after-commit listener with a flow of its own: it posts to the ledger
+ack A at step 8, durable before: no. Stripe gets 200 after T1 commits, while the reconciliation still waits in memory
+ack B at step 19, durable before: yes. SQS deletes the message after T2 commits; a thrown exception leaves it for redelivery

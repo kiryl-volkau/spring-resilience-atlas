@@ -2,42 +2,141 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "flow.schema.json",
   "title": "Flow",
-  "description": ".reliability/flows/<id>.json, written by the flow-tracer agent. Facts only; reliability verdicts belong to findings.",
+  "description": "Version 2. The flow-tracer writes .reliability/flows/drafts/<id>.json; `audit record-flow <id>` checks it, replaces its ids with stable ones, stamps commit and fingerprint and writes .reliability/flows/<id>.json and its page. Facts only: failure scenarios and verdicts live in the audit store. Files without schemaVersion are version 1 (hops and boundaries) and are still read.",
   "type": "object",
-  "required": ["id", "commit", "entrypoint", "hops", "boundaries", "acknowledgement", "sourceBudget", "openQuestions"],
+  "required": ["schemaVersion", "id", "title", "summary", "entries", "participants", "steps", "transactions", "links", "businessParts", "acknowledgements", "sourceBudget", "openQuestions"],
   "properties": {
-    "id": {"type": "string", "pattern": "^FLOW-[a-z0-9-]+$"},
-    "title": {"type": "string"},
-    "commit": {"type": ["string", "null"], "description": "Commit the atlas was built from."},
+    "schemaVersion": {"const": 2},
+    "id": {"type": "string", "pattern": "^FLOW-[a-z0-9-]+$", "description": "FLOW-<area>-<slug>, lower-case kebab; also the file name."},
+    "title": {"type": "string", "maxLength": 60, "description": "Business name of the flow."},
+    "summary": {"type": "string", "maxLength": 160, "description": "One sentence in business terms, no class names."},
+    "commit": {"type": ["string", "null"], "description": "Stamped by record-flow."},
+    "tracedAt": {"type": "string", "description": "Stamped by record-flow."},
+    "model": {"type": ["string", "null"]},
+    "fingerprint": {"type": "object", "description": "Stamped by record-flow: {files: {path: sha256}, core: sha256 of the methods around every step's evidence}."},
     "domain": {"type": ["string", "null"]},
-    "entrypoint": {
-      "type": "object",
-      "required": ["id", "kind", "target", "symbol"],
-      "properties": {
-        "id": {"type": "string"},
-        "kind": {"type": "string"},
-        "target": {"type": "string"},
-        "symbol": {"type": "string"}
+    "entries": {
+      "type": "array", "minItems": 1,
+      "description": "Every entry point the flow crosses, in the order the flow reaches them. Segment A is the start.",
+      "items": {
+        "type": "object",
+        "required": ["segment", "entrypointId", "trigger"],
+        "properties": {
+          "segment": {"type": "string", "pattern": "^[A-Z]$"},
+          "entrypointId": {"type": "string", "pattern": "^EP-[0-9a-f]+$"},
+          "kind": {"type": "string"}, "subkind": {"type": "string"}, "target": {"type": "string"}, "symbol": {"type": "string"},
+          "trigger": {"type": "string", "maxLength": 40, "description": "Who starts it: Stripe, SQS care-invoice-events, cron 02:00, a user."}
+        }
       }
     },
-    "hops": {"type": "array", "items": {"$ref": "#/$defs/hop"}},
-    "boundaries": {"type": "array", "items": {"$ref": "#/$defs/boundary"}},
-    "acknowledgement": {
-      "type": "object",
-      "required": ["description", "durableBefore"],
-      "properties": {
-        "description": {"type": "string", "description": "When and how the caller learns the work was accepted."},
-        "evidence": {"$ref": "#/$defs/evidence"},
-        "durableBefore": {"type": ["boolean", "null"], "description": "Whether all accepted work has crossed a durable boundary before the acknowledgement; null if unknown."}
+    "participants": {
+      "type": "array", "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "name"],
+        "properties": {
+          "id": {"type": "string", "description": "Any id in the draft; record-flow replaces it with P- and 8 hex of kind|name, the same in every flow."},
+          "kind": {"enum": ["EXTERNAL", "ENTRY", "BEAN", "STORE", "BROKER", "EXECUTOR", "SCHEDULER"]},
+          "name": {"type": "string", "maxLength": 40, "description": "Class, table, queue or system name."},
+          "detail": {"type": "string", "maxLength": 80},
+          "entrypointId": {"type": "string"}
+        }
+      }
+    },
+    "steps": {
+      "type": "array", "minItems": 1,
+      "description": "One arrow of the sequence diagram each, in the order they happen.",
+      "items": {
+        "type": "object",
+        "required": ["id", "segment", "from", "to", "kind", "label", "evidence"],
+        "properties": {
+          "id": {"type": "string", "description": "Any id in the draft; record-flow replaces it with S- and 8 hex of segment|kind|from|to|file|enclosing method, which survives a line shift."},
+          "segment": {"type": "string", "pattern": "^[A-Z]$"},
+          "from": {"type": "string", "description": "Participant id."},
+          "to": {"type": "string", "description": "Participant id; equal to from for TX_BEGIN, TX_COMMIT and TX_ROLLBACK."},
+          "kind": {"enum": ["TRIGGER", "CALL", "RETURN", "RESPONSE", "TX_BEGIN", "TX_COMMIT", "TX_ROLLBACK", "DB_WRITE", "DB_READ",
+            "MESSAGE_SEND", "MESSAGE_RECEIVE", "MESSAGE_ACK", "EVENT_PUBLISH", "EVENT_DELIVER", "ASYNC_FORK", "ASYNC_RUN",
+            "EXTERNAL_CALL", "EXTERNAL_REPLY", "CACHE_WRITE", "FILE_WRITE", "LOCK", "IDEMPOTENCY_CHECK", "RETRY", "LOG_ONLY"]},
+          "label": {"type": "string", "maxLength": 48, "description": "What the arrow says: a method, a verb and path, a table action."},
+          "tx": {"type": ["string", "null"], "description": "Transaction id from transactions[] open at this step."},
+          "thread": {"type": ["string", "null"], "description": "request, listener, scheduler, or the executor participant id after a fork."},
+          "durable": {"type": ["boolean", "null"], "description": "Whether what this step creates survives a crash at the next step."},
+          "sync": {"type": "boolean", "description": "false for a hand-off the caller does not wait for."},
+          "evidence": {"$ref": "#/$defs/evidence"},
+          "effectRef": {"type": "object", "description": "{entrypointId, index}: the effects.jsonl effect this step came from, when there is one."},
+          "notes": {"type": "string", "maxLength": 120}
+        }
+      }
+    },
+    "transactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "owner", "begin", "commit"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^T[0-9]+$"},
+          "owner": {"type": "string", "description": "Type.method that opens it."},
+          "begin": {"type": "string", "description": "Step id of its TX_BEGIN."},
+          "commit": {"type": "string", "description": "Step id of its TX_COMMIT. Its evidence is the method's last statement, never a closing brace."},
+          "propagation": {"type": "string"},
+          "readOnly": {"type": "boolean"}
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "description": "How one segment leads to the next.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "fromStep", "toStep", "basis", "decision", "evidence"],
+        "properties": {
+          "id": {"type": "string", "description": "Replaced by record-flow."},
+          "kind": {"enum": ["SEND_CONSUME", "EVENT_LISTEN", "OUTBOUND_WEBHOOK", "REDIRECT_CALLBACK", "WRITE_PICKUP", "MANUAL"]},
+          "fromStep": {"type": "string"},
+          "toStep": {"type": ["string", "null"], "description": "null for MANUAL, where the loop closes outside the code, and for a rejected candidate."},
+          "key": {"type": ["string", "null"], "description": "Queue, topic, event type, provider or table that joins the two sides."},
+          "basis": {"enum": ["LITERAL", "CONSTANT", "CONFIG_KEY", "EVENT_TYPE", "PROVIDER_TOKEN", "CORRELATION_FIELD", "TABLE", "AGENT"]},
+          "candidate": {"type": "string", "description": "The atlas/links.jsonl row this decides, as `flow candidates` prints it. Required to reject one."},
+          "decision": {"type": "object", "required": ["accepted", "reason"], "properties": {"accepted": {"type": "boolean"}, "reason": {"type": "string", "maxLength": 160}}},
+          "status": {"enum": ["STATIC", "INFERRED", "AGENT"], "description": "Computed by record-flow: the candidate's status, or AGENT when the scanner proposed none."},
+          "confidence": {"type": "string", "description": "Computed by record-flow; a draft's value is replaced."},
+          "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidence"}}
+        }
+      }
+    },
+    "businessParts": {
+      "type": "array", "minItems": 1, "maxItems": 8,
+      "description": "Parts a product owner would recognise. Every DB_WRITE, MESSAGE_SEND, EXTERNAL_CALL, EVENT_PUBLISH and ASYNC_FORK step belongs to exactly one part.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "steps", "outcome"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^BP-[0-9]+$"},
+          "name": {"type": "string", "maxLength": 40},
+          "segment": {"type": "string"},
+          "steps": {"type": "array", "items": {"type": "string"}},
+          "outcome": {"type": "string", "maxLength": 80},
+          "ownsState": {"type": "array", "items": {"type": "string"}, "description": "Tables or external objects the part creates or changes."}
+        }
+      }
+    },
+    "acknowledgements": {
+      "type": "array",
+      "description": "One per entry: when its caller is told the work was accepted.",
+      "items": {
+        "type": "object",
+        "required": ["segment", "stepId", "durableBefore", "description"],
+        "properties": {
+          "segment": {"type": "string"},
+          "stepId": {"type": "string"},
+          "durableBefore": {"type": ["boolean", "null"], "description": "Whether every business effect the caller asked for is durable before this step."},
+          "description": {"type": "string", "maxLength": 120}
+        }
       }
     },
     "stoppedAt": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["symbol", "reason"],
-        "properties": {"symbol": {"type": "string"}, "reason": {"type": "string"}}
-      },
+      "items": {"type": "object", "required": ["symbol", "reason"], "properties": {"symbol": {"type": "string"}, "reason": {"type": "string"}}},
       "description": "Calls deliberately not followed, with the reason."
     },
     "sourceBudget": {
@@ -48,15 +147,12 @@
         "limit": {"type": "integer"},
         "expansions": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["reason", "files"],
-            "properties": {"reason": {"type": "string"}, "files": {"type": "array", "items": {"type": "string"}}}
-          }
+          "items": {"type": "object", "required": ["reason", "files"], "properties": {"reason": {"type": "string"}, "files": {"type": "array", "items": {"type": "string"}}}}
         }
       }
     },
-    "openQuestions": {"type": "array", "items": {"type": "string"}}
+    "openQuestions": {"type": "array", "items": {"type": "string"}},
+    "candidatesUndecided": {"type": "array", "description": "Computed by record-flow: candidate links out of the flow's entry points that no link decides. A STATIC one that leaves the flow undecided rejects the draft."}
   },
   "$defs": {
     "evidence": {
@@ -65,33 +161,7 @@
       "properties": {
         "file": {"type": "string", "description": "Repository-relative path."},
         "line": {"type": "integer", "minimum": 1},
-        "snippet": {"type": "string", "description": "One line copied verbatim from file:line; checked by verify-evidence."}
-      }
-    },
-    "hop": {
-      "type": "object",
-      "required": ["order", "symbol", "evidence"],
-      "properties": {
-        "order": {"type": "integer"},
-        "symbol": {"type": "string", "description": "Class.method"},
-        "evidence": {"$ref": "#/$defs/evidence"},
-        "tx": {"type": ["string", "null"], "description": "Transaction id (T1, T2, ...) active in this hop."},
-        "thread": {"type": ["string", "null"], "description": "Caller, or the async boundary that started this hop's thread."},
-        "notes": {"type": "string"}
-      }
-    },
-    "boundary": {
-      "type": "object",
-      "required": ["order", "type", "symbol", "evidence"],
-      "properties": {
-        "order": {"type": "integer"},
-        "type": {"enum": ["TX_BEGIN", "TX_COMMIT", "DB_WRITE", "MESSAGE_SEND", "MESSAGE_ACK", "EVENT_PUBLISH", "EVENT_LISTENER", "ASYNC_FORK", "EXTERNAL_CALL", "CACHE_WRITE", "FILE_WRITE", "LOCK", "RESPONSE"]},
-        "symbol": {"type": "string"},
-        "evidence": {"$ref": "#/$defs/evidence"},
-        "target": {"type": ["string", "null"], "description": "Table, queue, topic, URL or cache the boundary touches, when known."},
-        "tx": {"type": ["string", "null"]},
-        "durable": {"type": ["boolean", "null"], "description": "Whether this boundary survives a process crash; null if unknown."},
-        "notes": {"type": "string"}
+        "snippet": {"type": "string", "description": "One line copied verbatim from file:line, with a real identifier in it; checked by verify-evidence."}
       }
     }
   }

@@ -55,6 +55,7 @@ Cases:
 | `audit-billing-places` | one message plans and runs the quick check of the billing package under a limit; the seeded defects come out CONFIRMED, the PayPal false positive REFUTED or MITIGATED, and no file under `src/` changes |
 | `audit-everything-golden` | the same for every place; the ledger says COMPLETE and names what was not covered |
 | `report-shows-verdicts` | with a recorded quick check restored, the report's reply keeps suspected apart from verified |
+| `audit-deep-stripe-webhook` | with the golden flow recorded (`seed-golden.sh --golden-flow`), one message plans and runs the deep audit of that flow under a limit: the scenario author and the verifier run, `record-step` stores both steps, the reconciliation loss is a VERIFIED finding, the double charge after a failed commit is design-level, the flow page carries the scenarios, and no file under `src/` changes |
 
 `--tag layer2` runs the four quick-check cases. Their seeds restore `expected/audit/places-sample/`
 or build the atlas. The verdicts each seed should produce are in
@@ -67,6 +68,29 @@ draft as `audit/AuditStore` and `audit/Record` define; a MITIGATED row whose mit
 PARTIAL and that names a remaining failure must be stored as CONFIRMED. The full plan's size and
 estimate must match `expected/audit/plan.tsv`. `expected/places.tsv` pins every place, LOW and
 `no-hint` ones included, with rules about a transaction keyed by the method that opens it.
+
+The deep audit's mechanical half runs without a model too, from `expected/audit/deep/`: the
+concepts the scanner matches on the golden flow (`concepts.txt`), a scenario draft with faults
+and one without (`scenarios-bad.jsonl`, `scenarios-ok.jsonl`, the record output pinned in the
+`.txt` beside each), a verification draft (`verification.jsonl`, `.txt`), and the findings,
+place rows and operation verdicts they leave (`derived.tsv`). `expected/flows/history/` pins the
+snapshot writer (`A.json`, times and commit fixed) and `flow diff` from A to two hand-edited
+states (`diff.txt`): one where the reconciliation finding was fixed and one where only its code
+changed. `GOLDEN_WRITE=1` rewrites these pins after a change that moves them on purpose; review
+the diff before committing.
+
+## Costs measured
+
+| Run | Models | Cost |
+|---|---|---|
+| Quick check, 40 golden places | Haiku | $0.10 |
+| Trace of the billing webhook flow | Opus | $0.51–1.02 |
+| Deep audit of the traced flow: scenarios and verification | Fable author, Opus verifier and orchestrator | $3.58 (Fable $2.72) |
+| Verification alone, 4 scenarios | Opus | $0.53 |
+
+A headless `claude -p` run ignores a skill's `model:` line, so the orchestrating turns run on the
+session's model. Pass `--model haiku` to measure what an interactive run costs; the deep audit's
+gate prices the orchestrator on Haiku.
 
 ## Smoke test on Windows
 

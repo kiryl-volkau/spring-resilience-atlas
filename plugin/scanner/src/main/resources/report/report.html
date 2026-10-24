@@ -6,36 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <title>__TITLE__ · Resilience report</title>
 <style>
-:root{
-  --bg:#f5f6f8;--surface:#ffffff;--surface-2:#f0f2f5;--border:#e1e4ea;--border-strong:#c3c9d3;
-  --text:#18202d;--muted:#535c6c;--faint:#646b78;--accent:#4338ca;--accent-weak:#eceefe;
-  --lv-high-fg:#ffffff;--lv-high-bg:#4c1d95;--lv-medium:#6d28d9;--lv-medium-bg:#ede9fe;--lv-low:#6a5a9e;
-  --bar-high:#4c1d95;--bar-medium:#8b5cf6;--bar-low:#c4b5fd;--bar-none:#dfe2e8;
-  --red:#c42b1c;--red-bg:#fdeceb;--amber:#8a5300;--amber-bg:#fdf3dc;--amber-bar:#d99a1e;--green:#176e30;--green-bg:#e6f4ea;--grey:#5b6472;--grey-bg:#eceef2;
-  --code-bg:#f2f3f6;--code-text:#283142;
-  --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.06);
-  --radius:12px;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#0f1115;--surface:#171a20;--surface-2:#1e222a;--border:#2a2f39;--border-strong:#3d4350;
-    --text:#e6e8ec;--muted:#a7aebb;--faint:#8b93a2;--accent:#a5b4fc;--accent-weak:#23263a;
-    --lv-high-fg:#1e1433;--lv-high-bg:#c4b5fd;--lv-medium:#c4b5fd;--lv-medium-bg:#2b2343;--lv-low:#a99fd0;
-    --bar-high:#ddd6fe;--bar-medium:#8b5cf6;--bar-low:#4c3d7a;--bar-none:#2f343e;
-    --red:#ff8a80;--red-bg:#3a1d1b;--amber:#f2c14e;--amber-bg:#352a12;--amber-bar:#d9a43a;--green:#7ed69a;--green-bg:#183022;--grey:#a1a8b5;--grey-bg:#262a33;
-    --code-bg:#1d2129;--code-text:#d8dce3;
-    --shadow:0 1px 2px rgba(0,0,0,.4);
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#0f1115;--surface:#171a20;--surface-2:#1e222a;--border:#2a2f39;--border-strong:#3d4350;
-  --text:#e6e8ec;--muted:#a7aebb;--faint:#8b93a2;--accent:#a5b4fc;--accent-weak:#23263a;
-  --lv-high-fg:#1e1433;--lv-high-bg:#c4b5fd;--lv-medium:#c4b5fd;--lv-medium-bg:#2b2343;--lv-low:#a99fd0;
-  --bar-high:#ddd6fe;--bar-medium:#8b5cf6;--bar-low:#4c3d7a;--bar-none:#2f343e;
-  --red:#ff8a80;--red-bg:#3a1d1b;--amber:#f2c14e;--amber-bg:#352a12;--amber-bar:#d9a43a;--green:#7ed69a;--green-bg:#183022;--grey:#a1a8b5;--grey-bg:#262a33;
-  --code-bg:#1d2129;--code-text:#d8dce3;
-  --shadow:0 1px 2px rgba(0,0,0,.4);
-}
+/*__THEME__*/
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
@@ -74,6 +45,15 @@ h3{font-size:15px;margin:0 0 12px;font-weight:650}
 .callout .headline{margin:2px 0 0;font-size:16px;line-height:1.45;max-width:960px}
 .callout .headline strong{font-weight:680}
 .callout .fine{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:960px}
+.callout .since{margin:6px 0 0;font-size:14px}
+#flow-map{margin:0 0 12px;padding:12px;overflow-x:auto}
+.fm{display:block;max-width:100%;height:auto}
+.fm-card{fill:var(--surface);stroke:var(--border-strong);stroke-width:1.5}
+.fm-red{stroke:var(--red)}.fm-amber{stroke:var(--amber)}.fm-green{stroke:var(--green)}
+.fm-pill{fill:var(--grey-bg);stroke:var(--border)}
+.fm-edge{stroke:var(--border-strong);stroke-width:1.2;fill:none}
+.fm-t{fill:var(--text);font-size:13px;font-weight:600}
+.fm-s{fill:var(--muted);font-size:11px}
 
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 @media (max-width:1000px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -116,6 +96,8 @@ tr.has-verdict .lv{background:transparent;color:var(--faint);border-color:var(--
 @media (max-width:860px){.cards{grid-template-columns:1fr}}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .card.click{cursor:pointer}
+.card.flash{outline:2px solid var(--accent);outline-offset:2px}
+.dcard .dg-wrap{margin-top:8px}
 .card.click:hover{border-color:var(--border-strong)}
 .card:focus-visible,.list tr.click:focus-visible,.th-sort:focus-visible,table.ops tr.op:focus-visible,.seg button:focus-visible,.linkbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .card .row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -273,15 +255,6 @@ footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px soli
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .print-only{display:none}
 @media print{
-  :root,:root[data-theme],:root:not([data-theme="light"]){
-    --bg:#fff;--surface:#fff;--surface-2:#f4f5f7;--border:#d5d9e0;--border-strong:#b8bec9;
-    --text:#111827;--muted:#4b5563;--faint:#646b78;--accent:#4338ca;--accent-weak:#eceefe;
-    --lv-high-fg:#ffffff;--lv-high-bg:#4c1d95;--lv-medium:#6d28d9;--lv-medium-bg:#ede9fe;--lv-low:#6a5a9e;
-    --bar-high:#4c1d95;--bar-medium:#8b5cf6;--bar-low:#c4b5fd;--bar-none:#dfe2e8;
-    --red:#c42b1c;--red-bg:#fdeceb;--amber:#8a5300;--amber-bg:#fdf3dc;--amber-bar:#d99a1e;--green:#176e30;--green-bg:#e6f4ea;--grey:#5b6472;--grey-bg:#eceef2;
-    --code-bg:#f2f3f6;--code-text:#283142;--shadow:none;
-  }
-  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .top,.toolbar,.more-row,.no-print{display:none!important}
   .print-only{display:block!important}
   table.ops tr.op{break-inside:avoid}
@@ -297,7 +270,7 @@ footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px soli
       <span>Resilience Atlas</span>
     </div>
     <nav class="toc" aria-label="Sections">
-      <a href="#overview">Overview</a><a href="#attention" data-needs-ops>Fix here first</a><a href="#patterns" data-needs-ops>Patterns</a><a href="#operations" data-needs-ops>Operations</a><a href="#blind-spots">Blind spots</a><a href="#method">How to read</a><a id="backlog-link" class="hidden" href="#">Backlog</a>
+      <a href="#overview">Overview</a><a href="#attention" data-needs-ops>Fix here first</a><a href="#flows" id="flows-link" class="hidden">Flows</a><a href="#patterns" data-needs-ops>Patterns</a><a href="#operations" data-needs-ops>Operations</a><a href="#blind-spots">Blind spots</a><a href="#method">How to read</a><a id="backlog-link" class="hidden" href="#">Backlog</a>
     </nav>
     <button class="icon-btn" id="theme" type="button" aria-label="Switch between light and dark theme">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
@@ -323,6 +296,13 @@ footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px soli
       <h3>Worst verdicts</h3>
       <div class="cards" id="worst-cards"></div>
     </div>
+  </section>
+
+  <section id="flows" class="hidden">
+    <h2>Flows</h2>
+    <p class="lede">Traced business flows. Each has a page with its sequence diagram and, after a deep audit, the scenarios in which it breaks.</p>
+    <div class="panel hidden" id="flow-map" aria-label="Flows and the state they share"></div>
+    <div class="panel"><table class="list" id="flows-table"></table></div>
   </section>
 
   <section id="patterns" class="split">
@@ -416,6 +396,9 @@ footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px soli
 
 <script id="data" type="application/json">__DATA__</script>
 <script>
+/*__DIAGRAM__*/
+</script>
+<script>
 (function () {
 "use strict";
 var D = JSON.parse(document.getElementById("data").textContent);
@@ -423,6 +406,24 @@ var OPS = D.ops;
 var RULES = D.rules || {};
 function ruleText(code) { return (RULES[code] || {}).text || ""; }
 var FILES = D.files;
+var FLOW_INDEX = arr(D.flowIndex), FLOWS_HREF = D.flowsHref || "flows";
+var FLOW_BY_ID = {}, FLOWS_OF_PLACE = {}, FLOWS_OF_OP = {};
+FLOW_INDEX.forEach(function (f) {
+  FLOW_BY_ID[f.id] = f;
+  arr(f.places).forEach(function (p) { (FLOWS_OF_PLACE[p] = FLOWS_OF_PLACE[p] || []).push(f); });
+  if (f.schemaVersion === 2) arr(f.entries).forEach(function (e) { (FLOWS_OF_OP[e] = FLOWS_OF_OP[e] || []).push(f); });
+});
+function flowHref(f, anchor) { return FLOWS_HREF + "/" + encodeURIComponent(f.page || f.id + ".html") + (anchor ? "#" + anchor : ""); }
+function flowLinks(list) { return list.map(function (f) { return '<a href="' + esc(flowHref(f)) + '">' + esc(f.title) + " \u2197</a>"; }).join(", "); }
+function flowBox(id) { return '<div class="dg-wrap flow-dg" data-flow="' + esc(id) + '"></div>'; }
+function drawFlows(root) {
+  if (typeof FlowDiagram === "undefined") return;
+  Array.prototype.forEach.call(root.querySelectorAll(".flow-dg[data-flow]"), function (box) {
+    var fl = D.flows[box.getAttribute("data-flow")];
+    if (box.firstChild || !fl) return;
+    FlowDiagram.render(box, fl, {compact: true, onStep: function (st) { location.href = flowHref(FLOW_BY_ID[fl.id] || {id: fl.id}, st.id); }});
+  });
+}
 var LEVELS = ["HIGH", "MEDIUM", "LOW", "NONE", "NA"];
 var LEVEL_LABEL = {HIGH: "High", MEDIUM: "Medium", LOW: "Low", NONE: "No pattern", NA: "Not analysed"};
 var COLOURS = ["RED", "YELLOW", "GREEN", "GREY"];
@@ -496,6 +497,12 @@ var PLACE_PILL = {CONFIRMED: ["YELLOW", "Suspected"], MITIGATED: ["GREEN", "Miti
 function placePill(p) {
   if (p.status === "STALE") return '<span class="st GREY" title="The code changed since the check">Stale</span>';
   if (p.status === "UNJUDGED") return '<span class="st GREY" title="' + esc(p.reason || "") + '">Unjudged</span>';
+  if (p.tier === "VERIFIED" || p.tier === "DEEP") {
+    var verified = p.tier === "VERIFIED";
+    if (p.verdict === "CONFIRMED") return verified ? '<span class="st RED" title="A failure story of a deep audit, verified by a second model">Broken</span>'
+      : '<span class="st YELLOW" title="A failure story of a deep audit, not verified yet">Suspected (deep)</span>';
+    return '<span class="st GREEN" title="A deep audit found no story that breaks here">' + (verified ? "Disproved" : "Refuted (deep)") + "</span>";
+  }
   var x = PLACE_PILL[p.verdict];
   return x ? '<span class="st ' + x[0] + '" title="Quick check by a small model">' + x[1] + "</span>" : '<span class="st GREY">Not audited</span>';
 }
@@ -670,7 +677,11 @@ SPOTS.push({title: "How deep the scan reads", text: "The entry method, the metho
     head = "<strong>" + fmt(pl.judged) + " of " + fmt(pl.inScope) + " places checked</strong>: <strong>" + fmt(pl.confirmed) + " suspected</strong>, " +
       fmt((pl.mitigated || 0) + (pl.refuted || 0)) + " mitigated or refuted" + (pl.uncertain ? ", " + fmt(pl.uncertain) + " uncertain" : "") +
       (pl.unjudged ? ", " + fmt(pl.unjudged) + " unjudged" : "") + (pl.stale ? ", " + fmt(pl.stale) + " stale" : "") + ".";
-    fine = "A quick check by a small model: suspected means the pattern is there and no mitigation was found in the code it read, not a verified defect. " +
+    var dp = cov.deep && cov.deep.scenarios ? cov.deep : null;
+    if (dp) head += " Deep audit of " + plural(dp.flows, "flow") + ": <strong>" + fmt(dp.verified) + " verified</strong>, " + fmt(dp.candidate) + " suspected, " +
+      fmt(dp.disproved) + " disproved, " + fmt(dp.harmless) + " harmless " + (dp.scenarios === 1 ? "scenario" : "scenarios") + ".";
+    fine = (dp ? "Places a deep audit judged carry its failure scenarios: verified means a second model tried to disprove the story and could not. The others come from a quick check by a small model: suspected"
+      : "A quick check by a small model: suspected") + " means the pattern is there and no mitigation was found in the code it read, not a verified defect. " +
       (op.noHint ? plural(op.lowOnly || 0, "operation") + " with only low hints and " + plural((op.noHint.ownDatabase || 0) + (op.noHint.other || 0), "operation") +
         " without a hint that still change state are checked only when asked (--level LOW, --level NONE); " + plural(op.noHint.readOnly || 0, "operation") +
         " change nothing on the path the scan read." : plural((op.total || 0) - (op.withHint || 0) - (op.notAnalysed || 0), "operation") + " without a high or medium hint were not checked.") +
@@ -698,7 +709,7 @@ SPOTS.push({title: "How deep the scan reads", text: "The entry method, the metho
         " write only their own database and " + fmt(why.other) + " do more without matching a pattern." : "") +
       (notAnalysed ? " " + plural(notAnalysed, "operation") + " could not be analysed at all." : "");
   }
-  el("state").innerHTML = icon + '<div><p class="headline">' + head + '</p><p class="fine">' + fine + "</p></div>";
+  el("state").innerHTML = icon + '<div><p class="headline">' + head + "</p>" + sinceLine() + '<p class="fine">' + fine + "</p></div>";
 })();
 
 (function () {
@@ -782,13 +793,82 @@ function opLink(o) {
   el("top").innerHTML = list.slice(0, 6).map(function (p) {
     var ops = sortedByAttention(p.ops.map(function (id) { return OP_BY_ID[id]; }).filter(Boolean));
     var sample = OP_BY_ID[p.o];
-    return '<div class="card"><div class="row1">' + levelPill(p.level) + (audited ? placePill(p) : "") + '<span class="title">' + esc(p.title) + "</span></div>" +
+    return '<div class="card" id="place-' + esc(p.id) + '"><div class="row1">' + levelPill(p.level) + (audited ? placePill(p) : "") + '<span class="title">' + esc(p.title) + "</span></div>" +
       '<p class="why">' + esc(p.verdict && p.summary ? p.summary : ruleText(p.code)) + "</p>" +
       (p.boundary ? '<p class="sub">Transaction opened in <span class="mono">' + esc(p.symbol) + "</span> (" + esc(fileName(FILES[p.file])) + ":" + p.line + ")</p>" : "") +
       (sample ? evidenceHtml(sample, p.ev, false) : "") +
+      (FLOWS_OF_PLACE[p.id] ? '<p class="sub">' + (FLOWS_OF_PLACE[p.id].some(function (f) { return (f.crossedBy || {})[p.id] === "METHOD"; }) ? "On the flow " : "Reached by the flow ") + flowLinks(FLOWS_OF_PLACE[p.id]) + "</p>" : "") +
       '<div class="affects"><span class="sub">' + (ops.length > 1 ? "Reached from " + plural(ops.length, "operation") : "Reached from") + "</span>" +
       ops.slice(0, 4).map(opLink).join("") + (ops.length > 4 ? '<span class="sub">+ ' + fmt(ops.length - 4) + " more</span>" : "") + "</div></div>";
   }).join("");
+})();
+
+/** "Since 24 Oct (a1b2c3d): 1 fixed, 2 still open …", from the newest snapshot of another commit against the live state. */
+function sinceLine() {
+  var d = D.since;
+  if (!d || !d.counts) return "";
+  var c = d.counts, from = d.from || {}, parts = [];
+  if (c.fixed) parts.push("<strong>" + fmt(c.fixed) + " fixed</strong>");
+  if (c["new"]) parts.push(fmt(c["new"]) + " new");
+  parts.push(fmt(c.stillOpen) + " still open");
+  if (c.notRechecked) parts.push(fmt(c.notRechecked) + " changed and not audited again");
+  if (c.disproved) parts.push(fmt(c.disproved) + " disproved");
+  return '<p class="since">Since the snapshot of ' + esc(dateTime(from.takenAt)) + (from.commit ? " (<code>" + esc(String(from.commit).slice(0, 7)) + "</code>)" : "") +
+    ": " + parts.join(", ") + " · <a href=\"#flows\">flows</a></p>";
+}
+
+/** Flows as cards, and the tables, queues and systems two or more of them share, joined by lines. */
+function drawFlowMap() {
+  var shared = arr(D.flowMap && D.flowMap.shared), nodes = FLOW_INDEX.filter(function (f) { return f.schemaVersion === 2; });
+  if (nodes.length < 2 || !shared.length || nodes.length > 12) return;
+  var W = 190, H = 54, GAP = 18, cols = Math.min(nodes.length, 4), rows = Math.ceil(nodes.length / cols);
+  var width = cols * W + (cols - 1) * GAP + 20, pillY = rows * (H + GAP) + 60, pillW = Math.max(110, Math.floor((width - 20) / shared.length) - 12);
+  var at = {}, svg = "";
+  nodes.forEach(function (f, i) {
+    var x = 10 + (i % cols) * (W + GAP), y = 10 + Math.floor(i / cols) * (H + GAP);
+    at[f.id] = {x: x + W / 2, y: y + H};
+    var tone = f.verdict === "CONCEPT" ? "red" : f.verdict === "STEP" ? "amber" : f.verdict === "NONE" ? "green" : "grey";
+    svg += '<a href="' + esc(flowHref(f)) + '"><rect class="fm-card fm-' + tone + '" x="' + x + '" y="' + y + '" width="' + W + '" height="' + H + '" rx="8"></rect>' +
+      '<text class="fm-t" x="' + (x + 10) + '" y="' + (y + 22) + '">' + esc(String(f.title).slice(0, 26)) + "</text>" +
+      '<text class="fm-s" x="' + (x + 10) + '" y="' + (y + 40) + '">' + esc(f.verdict === "CONCEPT" ? "design-level" : f.verdict === "STEP" ? "step-level" : f.scenarios ? "nothing breaks" : "not audited deeply") + "</text></a>";
+  });
+  shared.forEach(function (p, i) {
+    var x = 10 + i * (pillW + 12), cx = x + pillW / 2;
+    arr(p.flows).forEach(function (id) {
+      if (at[id]) svg = '<path class="fm-edge" d="M' + at[id].x + "," + at[id].y + " L" + cx + "," + pillY + '"></path>' + svg;
+    });
+    svg += '<rect class="fm-pill" x="' + x + '" y="' + pillY + '" width="' + pillW + '" height="26" rx="13"></rect>' +
+      '<text class="fm-s" x="' + cx + '" y="' + (pillY + 17) + '" text-anchor="middle">' + esc(human(p.kind)) + " · " + esc(String(p.name).slice(0, 18)) + "</text>";
+  });
+  el("flow-map").innerHTML = '<svg class="fm" viewBox="0 0 ' + Math.max(width, 10 + shared.length * (pillW + 12)) + " " + (pillY + 36) + '" role="img" aria-label="Flows and what they share">' + svg + "</svg>";
+  el("flow-map").classList.remove("hidden");
+}
+
+(function () {
+  if (!FLOW_INDEX.length) return;
+  drawFlowMap();
+  el("flows").classList.remove("hidden");
+  el("flows-link").classList.remove("hidden");
+  function deep(f) {
+    var n = f.scenarios;
+    if (!n) return '<span class="sub">' + (f.schemaVersion === 2 ? "not yet" : "\u2014") + "</span>";
+    var parts = [];
+    if (n.verified) parts.push(fmt(n.verified) + " verified");
+    if (n.candidate) parts.push(fmt(n.candidate) + " suspected");
+    if (n.disproved) parts.push(fmt(n.disproved) + " disproved");
+    if (n.harmless) parts.push(fmt(n.harmless) + " harmless");
+    var head = f.verdict === "CONCEPT" ? "<strong>Design-level</strong>" : f.verdict === "STEP" ? "Step-level" : "Nothing breaks";
+    return head + (f.worst ? " \u00b7 " + esc(String(f.worst.severity).toLowerCase()) + ": " + '<a href="' + esc(flowHref(f, f.worst.id)) + '">' + esc(f.worst.title) + "</a>" : "") +
+      '<br><span class="sub">' + parts.join(", ") + "</span>";
+  }
+  el("flows-table").innerHTML = '<tr><th>Flow</th><th>Entry points</th><th class="n">Steps</th><th class="n">Hints on it</th><th>Deep audit</th><th>Code since the trace</th></tr>' +
+    FLOW_INDEX.map(function (f) {
+      var ops = arr(f.entries).map(function (id) { return OP_BY_ID[id]; }).filter(Boolean);
+      return '<tr><td class="t">' + (f.schemaVersion === 2 ? '<a href="' + esc(flowHref(f)) + '">' + esc(f.title) + "</a>"
+        : esc(f.title) + ' <span class="sub">(traced before diagrams: no page)</span>') + "</td><td>" + ops.map(opLink).join("<br>") +
+        '</td><td class="n">' + esc(f.steps == null ? "\u2014" : f.steps) + '</td><td class="n">' + fmt(arr(f.places).length) + "</td><td>" + deep(f) + "</td><td>" +
+        esc(f.status === "STALE" ? "changed: re-trace" : f.status === "CURRENT" ? "unchanged" : "\u2014") + "</td></tr>";
+    }).join("");
 })();
 
 el("patterns-table").innerHTML = patternList.length
@@ -927,6 +1007,7 @@ function render() {
   var slice = filtered.slice(0, state.shown);
   el("body").innerHTML = slice.length ? slice.map(rowHtml).join("")
     : '<tr><td colspan="' + COLS.length + '"><div class="empty" style="margin:8px 0">' + (total ? "No operation matches these filters." : "No operations to list.") + "</div></td></tr>";
+  drawFlows(el("body"));
   el("count").textContent = (slice.length < filtered.length ? "Showing " + fmt(slice.length) + " of " : "") + plural(filtered.length, "operation");
   el("print-note").textContent = "Printed list: " + plural(slice.length, "operation") + " of " + fmt(total) + (filtersActive() ? ", filtered" : "") + ".";
   el("more-row").classList.toggle("hidden", slice.length >= filtered.length);
@@ -1000,6 +1081,7 @@ function findingHtml(fd) {
 function flowHtml(id) {
   var fl = D.flows[id];
   if (!fl) return '<p class="note">Flow <code>' + esc(id) + "</code> is referenced by the verdict, but its file is missing. The findings stand on their own evidence.</p>";
+  if (fl.schemaVersion === 2) return '<p><a href="' + esc(flowHref(FLOW_BY_ID[id] || {id: id})) + '">' + esc(fl.title) + " \u2197</a></p>" + flowBox(id);
   var h = "<p><strong>" + esc(fl.title || fl.id) + "</strong></p>";
   arr(fl.hops).forEach(function (x) { h += '<div class="hop">' + esc(x.order + ". " + x.symbol + (x.tx ? "  [" + x.tx + "]" : "") + (x.thread ? "  (" + x.thread + ")" : "")) + "</div>"; });
   if (arr(fl.boundaries).length) {
@@ -1017,6 +1099,11 @@ function detailHtml(o) {
       arr(o.findings).map(findingHtml).join("") +
       (v.flowId ? '<h4 style="margin-top:14px">Flow</h4>' + flowHtml(v.flowId) : "") + "</div>";
   }
+  arr(FLOWS_OF_OP[o.id]).forEach(function (f) {
+    if (o.verdict && o.verdict.flowId === f.id) return;
+    left += '<div class="dcard"><h4>Flow</h4><p><a href="' + esc(flowHref(f)) + '">' + esc(f.title) + " \u2197</a>" +
+      (f.status === "STALE" ? ' <span class="sub">(the code changed since the trace)</span>' : "") + "</p>" + flowBox(f.id) + "</div>";
+  });
   left += '<div class="dcard"><h4>' + (o.reasons.length ? "Why it has a hint" : "What the scanner read") + "</h4>";
   if (o.reasons.length) {
     var shown = {};
@@ -1052,6 +1139,7 @@ function toggle(id, force) {
   state.open[id] = true;
   tr.classList.add("open"); tr.setAttribute("aria-expanded", "true");
   tr.insertAdjacentHTML("afterend", '<tr class="detail" data-for="' + esc(id) + '"><td colspan="' + COLS.length + '">' + detailHtml(o) + "</td></tr>");
+  drawFlows(tr.nextSibling);
 }
 function scrollToRow(tr) {
   var tb = document.querySelector(".toolbar"), head = document.querySelector(".top");
@@ -1172,9 +1260,21 @@ if (audited && arr(cov.runs).length) {
 
 el("glossary").innerHTML = SIGNAL_ORDER.map(function (s) { return chip(s) + "<div>" + esc(SIGNALS[s].text) + "</div>"; }).join("");
 
+function openPlace(id) {
+  var card = document.getElementById("place-" + id);
+  if (card) {
+    card.scrollIntoView({block: "center"});
+    card.classList.add("flash");
+    setTimeout(function () { card.classList.remove("flash"); }, 1700);
+    return;
+  }
+  var p = arr(D.places).filter(function (x) { return x.id === id; })[0];
+  if (p) openOp(p.o);
+}
 window.addEventListener("hashchange", function () {
   var id = location.hash.slice(1);
   if (/^EP-[0-9a-f]+$/.test(id)) openOp(id);
+  if (/^place-PL-[0-9a-f]+$/.test(id)) openPlace(id.slice(6));
 });
 document.addEventListener("click", function (e) {
   var link = e.target.closest('a[href^="#EP-"]');
@@ -1186,6 +1286,7 @@ document.addEventListener("click", function (e) {
 });
 apply();
 if (/^#EP-[0-9a-f]+$/.test(location.hash)) openOp(location.hash.slice(1));
+if (/^#place-PL-[0-9a-f]+$/.test(location.hash)) openPlace(location.hash.slice(7));
 })();
 </script>
 </body>

@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>__TITLE__ · Flow</title>
+<style>
+/*__THEME__*/
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,"Cascadia Mono","Segoe UI Mono",Menlo,Consolas,monospace;font-size:12.5px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font:inherit;color:inherit}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+@media (max-width:640px){.wrap{padding:0 16px}}
+.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border)}
+.top-in{display:flex;align-items:center;gap:16px;height:52px}
+.back{font-weight:650;white-space:nowrap}
+.nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1}
+.nav::-webkit-scrollbar{display:none}
+.nav a{color:var(--muted);padding:6px 10px;border-radius:8px;font-size:13px;white-space:nowrap}
+.nav a:hover{background:var(--surface-2);color:var(--text);text-decoration:none}
+.nav a.here{color:var(--text);background:var(--surface-2);font-weight:600}
+.icon-btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:center;padding:0 10px;cursor:pointer;color:var(--muted);font-size:13px}
+.icon-btn:hover{color:var(--text);border-color:var(--border-strong)}
+section{margin:24px 0}
+h1{font-size:26px;line-height:1.2;margin:2px 0 6px;letter-spacing:-.02em;font-weight:700}
+h2{font-size:17px;margin:0 0 10px;font-weight:680}
+.eyebrow{margin:18px 0 0;color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.lede{color:var(--muted);margin:0 0 8px;max-width:820px;font-size:15px}
+.meta{color:var(--muted);margin:0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px}
+.meta code{background:var(--surface-2);padding:1px 6px;border-radius:5px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;min-width:0}
+.warn{border-color:var(--amber-bar);background:var(--amber-bg);color:var(--amber);border-radius:var(--radius);padding:10px 14px;margin-top:12px}
+.ctx{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ctx .box{border:1px solid var(--border-strong);background:var(--surface);border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer}
+.ctx .box small{color:var(--faint);text-transform:uppercase;font-size:10px;letter-spacing:.05em;margin-right:6px}
+.ctx .box.EXTERNAL{border-color:var(--accent);background:var(--accent-weak)}
+.ctx .box.ENTRY{font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.chip{border:1px solid var(--border);background:var(--surface);border-radius:99px;padding:4px 12px;font-size:13px;cursor:pointer;color:var(--text)}
+.chip[aria-pressed="true"]{border-color:var(--red);background:var(--red-bg);color:var(--red);font-weight:650}
+.chip.ok[aria-pressed="true"]{border-color:var(--green);background:var(--green-bg);color:var(--green)}
+.chip.dis{text-decoration:line-through;color:var(--grey)}
+.chip .sev{font-size:11px;font-weight:700;margin-right:6px;color:var(--red)}
+.chip.ok .sev,.chip.dis .sev{color:var(--grey)}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font:inherit;text-decoration:underline}
+.story .fix{margin:10px 0 0;padding-top:8px;border-top:1px solid var(--border)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--muted);font-size:12px;margin-top:8px}
+.legend i{display:inline-block;width:22px;height:0;border-top:2px solid var(--text);vertical-align:middle;margin-right:6px}
+.legend i.reply{border-top:2px dashed var(--muted)}
+.legend i.async{border-top:2px dotted var(--amber-bar)}
+.legend i.tx{width:10px;height:12px;border:1px solid var(--accent);background:var(--accent-weak);border-radius:3px}
+.legend i.vol{width:9px;height:9px;border:2px solid var(--amber-bar);border-radius:50%}
+.grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.story ol{margin:6px 0 0;padding-left:22px}
+.story li{margin:2px 0}
+.story li.bad{color:var(--red);font-weight:600}
+.story li.skip{color:var(--grey)}
+.story .because{margin:10px 0 0}
+.k{color:var(--faint);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+pre{background:var(--code-bg);color:var(--code-text);padding:8px 10px;border-radius:8px;overflow-x:auto;margin:6px 0;white-space:pre-wrap;word-break:break-word}
+table.list{width:100%;border-collapse:collapse;font-size:13.5px}
+table.list th{color:var(--muted);text-align:left;font-weight:600;font-size:12px;padding:6px 8px;border-bottom:1px solid var(--border)}
+table.list td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.lv{display:inline-flex;align-items:center;font-size:12px;font-weight:650;white-space:nowrap;border-radius:99px;padding:2px 9px;border:1px solid transparent}
+.lv.HIGH{color:var(--lv-high-fg);background:var(--lv-high-bg)}
+.lv.MEDIUM{color:var(--lv-medium);background:var(--lv-medium-bg)}
+.lv.LOW{color:var(--lv-low);border-color:var(--border-strong)}
+.lv.NONE{color:var(--faint);border-color:var(--border)}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:650;white-space:nowrap;border-radius:99px;padding:2px 9px}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.st.CONFIRMED{color:var(--red);background:var(--red-bg)}
+.st.UNCERTAIN{color:var(--amber);background:var(--amber-bg)}
+.st.REFUTED,.st.MITIGATED{color:var(--green);background:var(--green-bg)}
+.st.NONE{color:var(--grey);background:var(--grey-bg)}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:860px){.cards{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.card .t{font-weight:650}
+.sub{color:var(--muted);font-size:13px}
+details>summary{cursor:pointer;font-weight:650;margin-bottom:8px}
+footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px solid var(--border);margin-top:40px}
+.hidden{display:none!important}
+@media print{
+  .top,.chips,.no-print{display:none!important}
+  details{display:block}
+  details>*{display:block}
+  .grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="back" id="back" href="../report.html">&larr; Report</a>
+    <nav class="nav" id="nav" aria-label="Flows"></nav>
+    <button class="icon-btn" id="theme" type="button" aria-label="Switch between light and dark theme">&#9681;</button>
+  </div>
+</header>
+<main class="wrap">
+  <section id="head">
+    <p class="eyebrow">Flow</p>
+    <h1 id="title"></h1>
+    <p class="lede" id="summary"></p>
+    <p class="meta" id="meta"></p>
+    <div class="warn hidden" id="stale"></div>
+  </section>
+
+  <section id="context" aria-label="Systems on this flow">
+    <div class="ctx" id="ctx"></div>
+  </section>
+
+  <section id="diagram-section">
+    <div class="chips" id="chips" role="group" aria-label="Failure scenarios"></div>
+    <div class="dg-wrap" id="diagram"></div>
+    <div class="legend">
+      <span><i></i>call or write</span><span><i class="reply"></i>answer</span><span><i class="async"></i>another thread or a message</span>
+      <span><i class="tx"></i>transaction</span><span><i class="vol"></i>not durable yet</span><span>click an arrow for its code</span>
+      <button type="button" class="linkbtn hidden" id="fold"></button>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="panel story" id="story" aria-live="polite"></div>
+    <div class="panel" id="step" aria-live="polite"></div>
+  </section>
+
+  <section id="parts">
+    <h2>Business parts</h2>
+    <table class="list" id="parts-table"></table>
+  </section>
+
+  <section id="places-section">
+    <h2>Hints and findings on this flow</h2>
+    <div class="cards" id="places"></div>
+    <p class="sub hidden" id="module-facts"></p>
+  </section>
+
+  <section id="ledger">
+    <details>
+      <summary>How this flow was traced</summary>
+      <div id="ledger-body"></div>
+    </details>
+  </section>
+  <footer id="footer"></footer>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+/*__DIAGRAM__*/
+</script>
+<script>
+(function () {
+var D = JSON.parse(document.getElementById("data").textContent);
+var F = D.flow;
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]; }); }
+function human(s) { return String(s == null ? "" : s).toLowerCase().replace(/_/g, " "); }
+function fileName(p) { return String(p).split(/[\\/]/).pop(); }
+function arr(x) { return Array.isArray(x) ? x : []; }
+
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem("resilience-report-theme"); } catch (e) { }
+  if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+  el("theme").addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = dark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("resilience-report-theme", next); } catch (e) { }
+  });
+})();
+
+var P = {}, S = {}, PART_OF = {};
+arr(F.participants).forEach(function (p) { P[p.id] = p; });
+arr(F.steps).forEach(function (s) { S[s.id] = s; });
+arr(F.businessParts).forEach(function (bp) { arr(bp.steps).forEach(function (id) { PART_OF[id] = bp; }); });
+
+document.title = F.title + " · Flow";
+el("back").href = D.report;
+el("title").textContent = F.title;
+el("summary").textContent = F.summary || "";
+el("meta").innerHTML = [
+  arr(F.entries).length + (arr(F.entries).length === 1 ? " entry point" : " entry points"),
+  arr(F.steps).length + " steps",
+  F.commit ? "traced at <code>" + esc(String(F.commit).slice(0, 7)) + "</code>" : "",
+  F.tracedAt ? esc(String(F.tracedAt).slice(0, 10)) : "",
+  F.model ? esc(F.model) : "",
+  '<a href="' + esc(D.dataFile) + '">data</a>'
+].filter(Boolean).join("<span aria-hidden=\"true\">·</span>");
+if (D.stale) {
+  el("stale").classList.remove("hidden");
+  el("stale").textContent = "The code under this flow changed since it was traced" + (F.commit ? " at " + String(F.commit).slice(0, 7) : "") + ". Re-trace it before relying on the diagram.";
+}
+el("nav").innerHTML = arr(D.flows).map(function (f) {
+  return '<a href="' + esc(f.page || f.id + ".html") + '"' + (f.id === F.id ? ' class="here" aria-current="page"' : "") + ">" + esc(f.title) + (f.status === "STALE" ? " (stale)" : "") + "</a>";
+}).join("");
+
+var seen = {}, ctx = [];
+arr(F.steps).forEach(function (s) { [s.from, s.to].forEach(function (id) { if (!seen[id] && P[id]) { seen[id] = true; ctx.push(P[id]); } }); });
+el("ctx").innerHTML = ctx.filter(function (p) { return p.kind !== "BEAN"; }).map(function (p, i) {
+  return '<button type="button" class="box ' + esc(p.kind) + '" data-p="' + esc(p.id) + '"><small>' + esc(human(p.kind)) + "</small>" + esc(p.name) + "</button>";
+}).join("");
+el("ctx").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("[data-p]") : null;
+  if (!b) return;
+  var head = el("diagram").querySelector('.dg-p[data-p="' + b.getAttribute("data-p") + '"]');
+  if (head) {
+    var box = head.getBBox();
+    el("diagram").scrollTo({left: Math.max(0, box.x - 40), behavior: "smooth"});
+  }
+});
+
+var FOLD_KEY = "resilience-flow-fold", foldPref = null, dg;
+try { foldPref = localStorage.getItem(FOLD_KEY); } catch (e) { }
+function draw() {
+  dg = FlowDiagram.render(el("diagram"), F, {fold: foldPref === "show" ? false : foldPref === "fold" ? true : undefined,
+    onStep: function (s) { showStep(s); history.replaceState(null, "", "#" + s.id); }});
+  el("fold").classList.toggle("hidden", !dg.foldable);
+  el("fold").textContent = dg.folded ? "Show every bean" : "Fold beans into their entry point";
+}
+draw();
+el("fold").addEventListener("click", function () {
+  foldPref = dg.folded ? "show" : "fold";
+  try { localStorage.setItem(FOLD_KEY, foldPref); } catch (e) { }
+  draw();
+  fromHash();
+});
+
+function showStep(s) {
+  var from = P[s.from] || {}, to = P[s.to] || {};
+  var h = '<p class="k">Step ' + esc(s.n) + " · " + esc(human(s.kind)) + "</p><p><strong>" + esc(s.label) + "</strong></p>";
+  h += '<p class="sub">' + esc(from.name) + (s.from !== s.to ? " → " + esc(to.name) : "") +
+    (s.tx ? " · in " + esc(s.tx) : "") + (s.thread ? " · " + esc(P[s.thread] ? P[s.thread].name : s.thread) + " thread" : "") +
+    (s.durable === true ? " · durable" : s.durable === false ? " · not durable yet" : "") + "</p>";
+  if (s.notes) h += "<p>" + esc(s.notes) + "</p>";
+  if (s.evidence) h += '<p class="mono sub">' + esc(s.evidence.file) + ":" + esc(s.evidence.line) + "</p><pre>" + esc(String(s.evidence.snippet).trim()) + "</pre>";
+  var bp = PART_OF[s.id];
+  if (bp) h += '<p class="sub">Part of <strong>' + esc(bp.name) + "</strong>: " + esc(bp.outcome) + "</p>";
+  var here = arr(D.places).filter(function (p) { return arr(p.steps).indexOf(s.id) >= 0; });
+  if (here.length) h += '<p class="sub">Hints here: ' + here.map(function (p) { return '<a href="' + esc(D.report) + "#place-" + esc(p.id) + '">' + esc(p.title) + "</a>"; }).join(", ") + "</p>";
+  el("step").innerHTML = h;
+}
+el("step").innerHTML = '<p class="sub">Click an arrow in the diagram to see the line of code it stands for.</p>';
+
+var SC = arr(D.scenarios), FINDING = {};
+arr(D.findings).forEach(function (f) { FINDING[f.id] = f; });
+function showScenario(sc) {
+  arr(el("chips").children).forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-sc") === (sc && sc.id))); });
+  dg.overlay(sc);
+  if (!sc) {
+    el("story").innerHTML = SC.length ? '<p class="sub">Pick a scenario above to see where the flow breaks.</p>'
+      : '<p class="k">Failure scenarios</p><p class="sub">None yet. A deep audit of this flow writes them: <code>/resilience-audit:audit --deep --flow ' + esc(F.id) + "</code></p>";
+    return;
+  }
+  var h = '<p class="k">' + esc(human(sc.trigger && sc.trigger.kind)) + " · " + esc(human(sc.outcome && sc.outcome.kind)) + " · " + esc(human(sc.status)) + "</p><p><strong>" + esc(sc.title) + "</strong></p><ol>";
+  arr(sc.steps).forEach(function (st) {
+    var cls = /LOST|BROKEN|DUPLICATE|HUNG/.test(st.state) ? "bad" : st.state === "SKIPPED" ? "skip" : "";
+    h += '<li class="' + cls + '">' + (st.stepRef && S[st.stepRef] ? '<a href="#' + esc(st.stepRef) + '">' + esc(st.happens) + "</a>" : esc(st.happens)) + "</li>";
+  });
+  h += "</ol>";
+  if (sc.because) h += '<p class="because"><strong>Because</strong> ' + esc(sc.because) + "</p>";
+  if (sc.mitigation) h += '<p class="sub">Mitigation: ' + esc(sc.mitigation.name || "none") + " — " + esc(sc.mitigation.present ? human(sc.mitigation.covers) + " cover" : "missing") + "</p>";
+  if (sc.concept && sc.concept.scope) h += '<p class="sub">' + (sc.concept.scope === "CONCEPT" ? "<strong>Design-level</strong>: one step cannot close it." : "Step-level: one change closes it.") +
+    arr(sc.concept.closes).map(function (c) { return "<br>• " + esc(c.change) + " (" + esc(human(c.level)) + ")"; }).join("") + "</p>";
+  var f = FINDING[sc.findingId];
+  if (f) {
+    h += '<div class="fix"><p class="k">' + esc(f.id) + " · " + esc(human(f.severity)) + " · confidence " + esc(human(f.confidence)) + " · " + esc(human(f.status)) + "</p>";
+    if (f.recommendation) h += "<p><strong>Fix</strong> " + esc(f.recommendation) + "</p>";
+    if (arr(f.verification).length) h += '<p class="sub"><strong>Test</strong> ' + esc(f.verification.join(" ")) + "</p></div>";
+    else h += "</div>";
+  }
+  if (sc.blockedBy) h += '<p class="because"><strong>Bites once this is fixed</strong> ' + esc(sc.blockedBy.what) + "</p>";
+  if (sc.verifiedBy) h += '<p class="sub">Checked by ' + esc(sc.verifiedBy.model) + ": " + esc(human(sc.verifiedBy.outcome)) + " — " + esc(sc.verifiedBy.note) + "</p>";
+  if (sc.stale) h += '<p class="sub">Written against an earlier trace of this flow.</p>';
+  el("story").innerHTML = h;
+  var hole = sc.brokenAt && el("diagram").querySelector('[data-step="' + sc.brokenAt + '"]');
+  if (hole && hole.getBBox) {
+    var b = hole.getBBox(), box = el("diagram");
+    box.scrollTo({left: Math.max(0, b.x + b.width / 2 - box.clientWidth / 2), behavior: "smooth"});
+  }
+}
+el("chips").innerHTML = SC.map(function (sc) {
+  var cls = sc.status === "HARMLESS" ? " ok" : sc.status === "DISPROVED" ? " dis" : "";
+  var sev = sc.status === "HARMLESS" ? "harmless" : sc.status === "VERIFIED" ? human(sc.severity) + " ✓" : human(sc.severity);
+  return '<button type="button" class="chip' + cls + '" aria-pressed="false" data-sc="' + esc(sc.id) + '"><span class="sev">' + esc(sev) + "</span>" + esc(sc.title) + "</button>";
+}).join("");
+el("chips").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("[data-sc]") : null;
+  if (!b) return;
+  var sc = SC.filter(function (x) { return x.id === b.getAttribute("data-sc"); })[0];
+  var on = b.getAttribute("aria-pressed") === "true";
+  showScenario(on ? null : sc);
+  history.replaceState(null, "", on ? "#" : "#" + sc.id);
+});
+if (!SC.length) el("chips").classList.add("hidden");
+var uncovered = arr(D.concepts && D.concepts.uncovered);
+if (uncovered.length) {
+  el("chips").insertAdjacentHTML("afterend", '<p class="sub" id="uncovered">Also matched on this flow, with no scenario accepted: ' +
+    uncovered.map(function (c) { return esc(c.name); }).join("; ") + ". The next deep audit of this flow tries them again.</p>");
+}
+
+el("parts-table").innerHTML = "<thead><tr><th>Part</th><th>Outcome</th><th>Steps</th><th>State it owns</th></tr></thead><tbody>" +
+  arr(F.businessParts).map(function (bp) {
+    return "<tr><td><strong>" + esc(bp.name) + "</strong></td><td>" + esc(bp.outcome) + "</td><td>" +
+      arr(bp.steps).map(function (id) { return S[id] ? '<a href="#' + esc(id) + '">' + esc(S[id].n) + "</a>" : ""; }).join(", ") + "</td><td>" + esc(arr(bp.ownsState).join(", ")) + "</td></tr>";
+  }).join("") + "</tbody>";
+
+var pathPlaces = arr(D.places).filter(function (p) { return !p.module; }), modulePlaces = arr(D.places).filter(function (p) { return p.module; });
+el("places").innerHTML = pathPlaces.length ? pathPlaces.map(function (p) {
+  var steps = arr(p.steps).map(function (id) { return S[id] ? '<a href="#' + esc(id) + '">' + esc(S[id].n) + "</a>" : ""; }).filter(Boolean);
+  return '<div class="card"><div><span class="lv ' + esc(p.level) + '">' + esc(human(p.level)) + "</span> " +
+    '<span class="st ' + esc(p.verdict || "NONE") + '">' + esc(p.verdict ? human(p.verdict) : "not checked") + "</span>" +
+    (p.tier && p.tier !== "TRIAGE" ? ' <span class="sub">' + esc(human(p.tier)) + "</span>" : "") + "</div>" +
+    '<div class="t"><a href="' + esc(D.report) + "#place-" + esc(p.id) + '">' + esc(p.title) + "</a></div>" +
+    '<div class="sub mono">' + esc(p.symbol) + " · " + esc(fileName(p.file)) + ":" + esc(p.line) + "</div>" +
+    (p.summary ? '<div class="sub">' + esc(p.summary) + "</div>" : "") +
+    (steps.length ? '<div class="sub">At steps ' + steps.join(", ") + "</div>" : "") + "</div>";
+}).join("") : '<p class="sub">No code hint falls on this flow.</p>';
+if (modulePlaces.length) {
+  el("module-facts").classList.remove("hidden");
+  el("module-facts").innerHTML = "Module facts that reach this flow: " + modulePlaces.map(function (p) {
+    return '<a href="' + esc(D.report) + "#place-" + esc(p.id) + '">' + esc(p.title) + "</a>" + (p.verdict ? " (" + esc(human(p.verdict)) + ")" : "");
+  }).join(", ");
+}
+
+var lh = "";
+arr(F.acknowledgements).forEach(function (a) {
+  lh += '<p><span class="k">Answer ' + esc(a.segment) + "</span> " + esc(a.description) + ' <span class="sub">(durable before: ' +
+    (a.durableBefore === true ? "yes" : a.durableBefore === false ? "no" : "unknown") + ")</span></p>";
+});
+if (arr(F.links).length) {
+  lh += '<p class="k">Links between entry points</p><ul>' + F.links.map(function (l) {
+    return "<li>" + esc(human(l.kind)) + " " + esc(l.key || "") + " — " + (l.decision && l.decision.accepted ? "accepted, " + esc(human(l.confidence)) + " confidence" : "rejected") +
+      ": " + esc(l.decision && l.decision.reason) + "</li>";
+  }).join("") + "</ul>";
+}
+if (arr(F.candidatesUndecided).length) {
+  lh += '<p class="k">Candidate links not followed</p><ul>' + F.candidatesUndecided.map(function (u) {
+    return "<li>" + esc(human(u.kind)) + " " + esc(u.key) + " → " + esc(u.to) + ' <span class="sub">(' + esc(human(u.status)) + ")</span></li>";
+  }).join("") + "</ul>";
+}
+if (F.sourceBudget) lh +='<p class="sub">Files opened: ' + esc(F.sourceBudget.filesOpened) + " of " + esc(F.sourceBudget.limit) + "</p>";
+if (arr(F.stoppedAt).length) lh += '<p class="k">Not followed</p><ul>' + F.stoppedAt.map(function (s) { return '<li><span class="mono">' + esc(s.symbol) + "</span>: " + esc(s.reason) + "</li>"; }).join("") + "</ul>";
+if (arr(F.openQuestions).length) lh += '<p class="k">Open questions</p><ul>' + F.openQuestions.map(function (q) { return "<li>" + esc(q) + "</li>"; }).join("") + "</ul>";
+el("ledger-body").innerHTML = lh || '<p class="sub">Nothing recorded.</p>';
+el("footer").textContent = "Rendered " + String(D.generatedAt).replace("T", " ").replace("Z", " UTC") + " by " + D.generator + " from " + D.dataFile + ". Facts come from the code; failure scenarios come from an audit.";
+
+function fromHash() {
+  var h = location.hash.slice(1);
+  if (S[h]) {
+    dg.select(h);
+    showStep(S[h]);
+    var g = el("diagram").querySelector('[data-step="' + h + '"]');
+    if (g && g.scrollIntoView) g.scrollIntoView({block: "center", inline: "center"});
+  }
+  var sc = SC.filter(function (x) { return x.id === h; })[0];
+  showScenario(sc || (SC.length && !S[h] ? SC[0] : null));
+}
+window.addEventListener("hashchange", fromHash);
+fromHash();
+})();
+</script>
+</body>
+</html>

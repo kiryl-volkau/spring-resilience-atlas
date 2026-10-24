@@ -45,10 +45,19 @@ Read the count line before paging. When a query matches hundreds of rows, narrow
 | `packages [--depth N]` | Package tree with type and entry-point counts |
 | `domains` | Domains from `domains.jsonl`, with entry-point counts |
 | `verify-evidence <file>` | Check every `{file, line, snippet}` in a flow or finding document against the working tree. Exits 1 and prints `FAILED` on any `MISMATCH`, `MALFORMED`, `TRIVIAL` or `MISSING_FILE` line, on a hop or boundary without evidence, or when there is no evidence at all |
-| `doc <name>` | Print a bundled reference: `atlas-cli.md`, `not-in-atlas.md`, `entrypoint-rules.md`, `entrypoint`/`domain`/`flow`/`finding`/`place-verdict` `.schema.json` |
+| `doc <name>` | Print a bundled reference: `atlas-cli.md`, `not-in-atlas.md`, `entrypoint-rules.md`, `flow-pages.md`, `entrypoint`/`domain`/`flow`/`scenario`/`finding`/`place-verdict` `.schema.json` |
 | `places [--limit N] [--level HIGH,MEDIUM] [--rule CODE]` | The report's places in its fix-first order: id, level, rule, method, location, operation count, the first operation and its target, and the quick-check verdict when one is recorded. Reads only |
 | `audit plan [filters]` | Plan the quick check of the report's places (a rule code at the method enclosing its evidence, or at the method that opens the transaction for a rule about one; HIGH and MEDIUM unless `--level` says otherwise). Rescans when the sources changed, skips places with a current verdict, writes `.reliability/audit/plan.json` and prints the places, the estimate in tokens and USD, the caps and the plan id. Spends nothing |
-| `audit next <plan-id> [--batches N]` | Issue the next N batches (default 4) of that plan: write their evidence packets and count their estimate as spent. Exits 2 when the sources, the atlas or the store changed since the plan; prints `stoppedBecause: done\|usd\|waves` when nothing more may be issued |
+| `audit next <plan-id> [--batches N]` | Issue the next N batches (default 4) of that plan: write their evidence packets and count their estimate as spent. Exits 2 when the sources, the atlas or the store changed since the plan; prints `stoppedBecause: done\|usd\|waves` when nothing more may be issued. For a deep plan it issues one step at a time instead: `packet … draft … step <FLOW-id>:<STEP> agent … model …` |
+| `audit deep plan [filters]` | Plan the deep audit of whole flows: per flow a trace (skipped when a current version 2 flow starts at the same entry point), failure scenarios and their verification. By default the HIGH places the quick check found `CONFIRMED` or `UNCERTAIN`, or, before any quick check, the first `--top N` (5) HIGH places in the report's order, grouped into flows over the candidate links; `--flow FLOW-id` names a recorded flow, `--places` and `--ops` name places. Writes the plan and prints one row per flow, the estimate and the caps. Spends nothing |
+| `audit record-step <FLOW-id>:<STEP>` | Store what a deep step's agent wrote. `TRACE` records the flow like `record-flow`; `SCENARIOS` checks the scenario draft against the flow and the tree, stores `audit/scenarios/<FLOW-id>.jsonl`, derives `findings.jsonl` and writes DEEP verdict rows for the places the scenarios explain; `VERIFY` applies the verifier's outcomes to scenarios, findings and place rows. Rebuilds the derived files and the flow's page. A missing or rejected draft leaves the step `UNJUDGED` and the flow's later steps unplanned; it never fails for a bad draft |
+| `audit record-flow <FLOW-id\|file>` | Check a tracer's draft (`.reliability/flows/drafts/<id>.json`, version 2 of `flow.schema.json`) against the schema and the tree, replace its ids with stable ones, and write `.reliability/flows/<id>.json`, `flows/index.json` and the page `flows/<id>.html`. Prints the numbered steps; exits 1 with a `PROBLEM` line per fault and writes nothing |
+| `flow list` | The recorded flows: id, `CURRENT` or `STALE` (the code under it changed since the trace), steps, segments, places it crosses, title |
+| `flow show <FLOW-id>` | One flow as numbered steps, segments, transactions, links, business parts and acknowledgements |
+| `flow candidates <EP-id>` | The entry points a flow starting there plausibly reaches, from `links.jsonl`: forward over every link out of the reached entry points and, for a webhook, backward from the outbound calls it may answer; at most 4 segments and 12 links. Prints each link with its basis and status, the two lines of code it joins, and the files on the reached paths |
+| `flow snapshot [--keep N]` | Record the flows (their fingerprints and steps), the scenarios, the deep findings with their code fingerprints then and now, and the place verdicts as one small JSON in `.reliability/history/`; keeps the newest N (20). A deep plan takes one when it finishes |
+| `flow diff [<snapshot> [<snapshot>\|live]] [--format json]` | Compare two states, by default the newest snapshot with the code as it is now. Each finding open in the first is fixed (gone after a later deep audit of its flow), still open, changed and not audited again (its code changed, or it is gone without a later audit), or disproved; open findings only in the second are new. Also lists flows added, removed and re-traced |
+| `flow page <FLOW-id> [--open]` | Rebuild a flow's page from its data; `report` rebuilds every flow's page too. `doc flow-pages.md` explains the page |
 | `audit record <batch-id>` | Validate the checker's draft for a batch, verify its evidence, store one row per place (`places/<batch>.jsonl`; UNJUDGED with a reason when a row is missing or rejected) and rebuild `places.jsonl`, `verdicts.jsonl`, `coverage.json` and `.reliability/backlog.md`. Never fails for a bad draft |
 
 `audit plan` filters: `--places PL-a,PL-b`, `--ops EP-a,EP-b`, `--rule CODE`, `--level HIGH,MEDIUM`,
@@ -66,6 +75,15 @@ Options: `--model haiku|sonnet|opus|fable` (default haiku), `--batch N` places p
 `--audit DIR` (default `.reliability/audit`). A verdict goes stale when the method around its
 evidence, the effects the rule cited, the mitigation signals on the path or a file the checker
 opened change.
+
+`audit deep plan` options: `--max-flows N` (default 3), `--trace-model` (opus), `--deep-model`
+(fable; `opus` for accounts without it), `--verify-model` (opus), `--orchestrator-model` (haiku: what the
+estimate prices the skill's own turns at), `--max-usd X` (default twice the
+estimate), `--waves N` steps (default 12), `--include-current` (audit places that already have a
+current deep verdict). The scenario packet prints the flow as a table of its steps, the places on
+it with their hypotheses, mitigation names and quick-check verdicts, the failure patterns of
+`audit/concepts.json` whose structure the flow matches, and the methods behind the steps and the
+places; the verifier's packet prints the HIGH and CRITICAL scenarios, at most 4.
 
 ## Entry-point filters
 
@@ -162,3 +180,24 @@ What the atlas cannot see is listed by `doc not-in-atlas.md`.
   named like `local`, `dev`, `test` or `demo` are ignored. Only the newest migration under each
   migration root (Flyway by version, others by path) is read for destructive statements.
 - **Not analysed.** Kotlin, Groovy and regex-fallback records have `analysed: false` and no effects.
+- **Send destinations.** A `message-send` effect carries `target: {key, basis, status, via}`:
+  the queue, topic or binding from a string literal, a constant, a `queue("…")` call in a builder
+  lambda, or a field set from a constructor parameter with `@Value("${key:default}")` that the
+  module's config resolves (`STATIC`) or only its default gives (`INFERRED`). A Spring Cloud
+  Stream binding resolves through `spring.cloud.stream.bindings.<name>.destination`. Anything
+  else is `UNKNOWN` with the reason in `via`.
+
+## Links
+
+`scan` also writes `links.jsonl`: candidate links between entry points, one row each, as
+`{id, kind, from: {entrypointId, effect, file, line, symbol}, to: {entrypointId, file, line, symbol}, key, basis, status, via}`.
+
+| Kind | Joins | Status |
+|---|---|---|
+| `SEND_CONSUME` | a send and every consumer of the same destination; a consumer's `${…}` target resolves through the config | `STATIC` when both sides are in code or config, `INFERRED` when either is only a `@Value` default |
+| `EVENT_LISTEN` | an event publish and every listener of its type | `STATIC`; `INFERRED` through a supertype |
+| `OUTBOUND_WEBHOOK` | an outbound call and the webhooks of the same provider: a token from the call's SDK package or base-URL config key, matched against a webhook's signature header, the path segment after `webhooks`, or a verifier import. Generic words and tokens shared by more than 3 webhooks are dropped | always `INFERRED`: the same provider, not proof that this call is answered there |
+
+A link says what matched, not that the work flows along it: the flow tracer accepts or rejects
+each one it meets, and `record-flow` refuses a flow that leaves a `STATIC` link out of it
+undecided.

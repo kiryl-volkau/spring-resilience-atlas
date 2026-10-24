@@ -1,0 +1,7 @@
+# verification recorded for FLOW-billing-stripe-webhook: 2 verified (1 blocked for now by another defect), 0 disproved, 1 doubt · 2 places verified
+SC-c07cf438	VERIFIED	Restart after the 200: reconciliation lost — the task goes to a fixed pool with an in-memory queue after T1; nothing persists it and the response does not wait
+SC-69245ab5	BLOCKED	Commit fails after the charge; redelivery charges again — no idempotency key and the rollback listener only logs; today the invoice save fails first, on the renamed column
+SC-8726685d	DOUBT	Stripe retries the webhook: invoice and charge twice — Stripe signs each delivery, so a retry is rejected
+REJECTED	line 3	outcome	DISPROVED without evidence that verifies is recorded as DOUBT
+REJECTED	line 4	scenarioId	SC-00000000 is not one of the scenarios of the packet
+# FLOW-billing-stripe-webhook:VERIFY recorded

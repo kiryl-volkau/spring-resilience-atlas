@@ -22,7 +22,7 @@ spring:
 care:
   billing:
     invoice-queue: care-invoice-events
-    payment-provider:
+    stripe:
       base-url: https://api.payments.example.com
   resident:
     transfer-queue: care-resident-transfers

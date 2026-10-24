@@ -516,7 +516,7 @@ public final class JavaSourceParser {
                 String type = simpleTypeName(node.getIdentifier().toString());
                 newTypes.add(type);
                 sites.add(new MethodDecl.Site(MethodDecl.Site.NEW, intern(type), line(node), false, node.getArguments().size(),
-                        encl, firstArgType(node.getArguments()), null, false, false));
+                        encl, firstArgType(node.getArguments()), null, false, false, List.of()));
                 scan(node.getEnclosingExpression(), unused);
                 scan(node.getIdentifier(), unused);
                 scan(node.getTypeArguments(), unused);
@@ -544,7 +544,7 @@ public final class JavaSourceParser {
                             : q instanceof MemberSelectTree ms ? (isThis(ms.getExpression()) ? ms.getIdentifier().toString() : ms.toString())
                             : null;
                     if (receiver != null) {
-                        sites.add(new MethodDecl.Site(intern(receiver), intern(name), line(node), false, -1, encl, null, null, false, false));
+                        sites.add(new MethodDecl.Site(intern(receiver), intern(name), line(node), false, -1, encl, null, null, false, false, List.of()));
                     }
                 }
                 return super.visitMemberReference(node, unused);
@@ -696,7 +696,7 @@ public final class JavaSourceParser {
                     }
                 }
                 boolean qualified = target instanceof MemberSelectTree;
-                assignments.add(new MethodDecl.Site(qualified ? "this" : null, intern(name), line(target), false, 0, encl, null, null, false, false));
+                assignments.add(new MethodDecl.Site(qualified ? "this" : null, intern(name), line(target), false, 0, encl, null, null, false, false, List.of()));
             }
 
             private static String assignedName(ExpressionTree target) {
@@ -713,7 +713,7 @@ public final class JavaSourceParser {
                 boolean returned = node == returning;
                 boolean discarded = statements.contains(node);
                 if (!(node.getMethodSelect() instanceof MemberSelectTree ms)) {
-                    sites.add(new MethodDecl.Site(null, intern(name), line(node), false, args, encl, argType, hints, returned, discarded));
+                    sites.add(new MethodDecl.Site(null, intern(name), line(node), false, args, encl, argType, hints, returned, discarded, argTexts(node.getArguments())));
                     return null;
                 }
                 ExpressionTree e = ms.getExpression();
@@ -743,7 +743,7 @@ public final class JavaSourceParser {
                     return null;
                 }
                 receiver = intern(receiver);
-                sites.add(new MethodDecl.Site(receiver, intern(name), line(node), chained, args, encl, argType, hints, returned, discarded));
+                sites.add(new MethodDecl.Site(receiver, intern(name), line(node), chained, args, encl, argType, hints, returned, discarded, argTexts(node.getArguments())));
                 return receiver;
             }
 
@@ -770,6 +770,15 @@ public final class JavaSourceParser {
                     }
                 }
                 return intern(b.toString());
+            }
+
+            private static List<String> argTexts(List<? extends ExpressionTree> args) {
+                List<String> out = new ArrayList<>(2);
+                for (int i = 0; i < Math.min(2, args.size()); i++) {
+                    String t = args.get(i).toString();
+                    out.add(intern(t.length() > 120 ? t.substring(0, 120) : t));
+                }
+                return out;
             }
 
             private static String firstArgType(List<? extends ExpressionTree> args) {
