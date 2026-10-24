@@ -89,6 +89,7 @@ footer{color:var(--faint);font-size:12px;padding:24px 0 40px;border-top:1px soli
 .hidden{display:none!important}
 @media print{
   .top,.chips,.no-print{display:none!important}
+  .dg-wrap{margin:0!important}
   details{display:block}
   details>*{display:block}
   .grid{grid-template-columns:1fr}
@@ -210,27 +211,37 @@ el("ctx").innerHTML = ctx.filter(function (p) { return p.kind !== "BEAN"; }).map
 el("ctx").addEventListener("click", function (ev) {
   var b = ev.target.closest ? ev.target.closest("[data-p]") : null;
   if (!b) return;
-  var head = el("diagram").querySelector('.dg-p[data-p="' + b.getAttribute("data-p") + '"]');
+  var head = el("diagram").querySelector('.dg-p[data-p="' + dg.column(b.getAttribute("data-p")) + '"]');
   if (head) {
     var box = head.getBBox();
     el("diagram").scrollTo({left: Math.max(0, box.x - 40), behavior: "smooth"});
   }
 });
 
-var FOLD_KEY = "resilience-flow-fold", foldPref = null, dg;
+var FOLD_KEY = "resilience-flow-fold", foldPref = null, dg, picked = null, shown = null, room = 0, resizing = 0;
 try { foldPref = localStorage.getItem(FOLD_KEY); } catch (e) { }
+// A diagram wider than the text column runs out to the window's edges, less a 16px gutter.
 function draw() {
-  dg = FlowDiagram.render(el("diagram"), F, {fold: foldPref === "show" ? false : foldPref === "fold" ? true : undefined,
-    onStep: function (s) { showStep(s); history.replaceState(null, "", "#" + s.id); }});
-  el("fold").classList.toggle("hidden", !dg.foldable);
-  el("fold").textContent = dg.folded ? "Show every bean" : "Fold beans into their entry point";
+  var box = el("diagram");
+  room = document.documentElement.clientWidth - 34;
+  dg = FlowDiagram.render(box, F, {fold: foldPref === "show" ? false : undefined, room: room, stickyTop: document.querySelector(".top").offsetHeight,
+    onStep: function (s) { picked = s.id; showStep(s); history.replaceState(null, "", "#" + s.id); }});
+  var out = Math.max(0, Math.min(dg.width, room) + 2 - box.parentNode.clientWidth) / 2;
+  box.style.margin = out ? "0 " + -out + "px" : "";
+  if (picked) dg.select(picked);
+  if (shown) dg.overlay(shown);
+  el("fold").classList.toggle("hidden", !dg.foldable && !dg.folded);
+  el("fold").textContent = dg.folded ? "Show every bean and table" : "Fit to the page width";
 }
 draw();
 el("fold").addEventListener("click", function () {
-  foldPref = dg.folded ? "show" : "fold";
+  foldPref = dg.folded ? "show" : "fit";
   try { localStorage.setItem(FOLD_KEY, foldPref); } catch (e) { }
   draw();
-  fromHash();
+});
+window.addEventListener("resize", function () {
+  clearTimeout(resizing);
+  resizing = setTimeout(function () { if (document.documentElement.clientWidth - 34 !== room) draw(); }, 150);
 });
 
 function showStep(s) {
@@ -252,6 +263,7 @@ el("step").innerHTML = '<p class="sub">Click an arrow in the diagram to see the 
 var SC = arr(D.scenarios), FINDING = {};
 arr(D.findings).forEach(function (f) { FINDING[f.id] = f; });
 function showScenario(sc) {
+  shown = sc || null;
   arr(el("chips").children).forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-sc") === (sc && sc.id))); });
   dg.overlay(sc);
   if (!sc) {
@@ -283,7 +295,8 @@ function showScenario(sc) {
   var hole = sc.brokenAt && el("diagram").querySelector('[data-step="' + sc.brokenAt + '"]');
   if (hole && hole.getBBox) {
     var b = hole.getBBox(), box = el("diagram");
-    box.scrollTo({left: Math.max(0, b.x + b.width / 2 - box.clientWidth / 2), behavior: "smooth"});
+    if (b.x < box.scrollLeft || b.x + b.width > box.scrollLeft + box.clientWidth)
+      box.scrollTo({left: Math.max(0, b.x + b.width / 2 - box.clientWidth / 2), behavior: "smooth"});
   }
 }
 el("chips").innerHTML = SC.map(function (sc) {
@@ -355,6 +368,7 @@ el("footer").textContent = "Rendered " + String(D.generatedAt).replace("T", " ")
 function fromHash() {
   var h = location.hash.slice(1);
   if (S[h]) {
+    picked = h;
     dg.select(h);
     showStep(S[h]);
     var g = el("diagram").querySelector('[data-step="' + h + '"]');

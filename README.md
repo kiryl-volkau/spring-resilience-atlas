@@ -180,7 +180,8 @@ file-and-line evidence. The scanner checks the draft against the tree and draws 
 offline page in `.reliability/flows/`:
 
 - a sequence diagram with transactions, threads, messages and the writes that are not durable
-  yet; past a dozen participants it folds beans into their entry point and tables into one column;
+  yet, fitted to the window: the tables share one column, labels run on past short arrows and,
+  last, beans that only answer fold into their caller;
 - the flow's business parts, their outcomes and the state each one owns;
 - the flow-level patterns that match it, such as an external effect inside a local transaction;
 - after `audit --deep`, each way the flow breaks, drawn on the arrow where it breaks, with the

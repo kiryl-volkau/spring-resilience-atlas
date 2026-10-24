@@ -47,12 +47,19 @@ makes `record-flow` refuse the draft.
 
 ## Reading a page
 
-- **Diagram.** One arrow per step, numbered. A flow with more than 12 participants folds each
-  segment's beans into its entry point's column ("entry +3 beans"); calls between them become
-  loops labelled with the bean. When it is still too wide, the tables share one "database"
-  column and each arrow names its table. Queues, external systems and thread pools always keep
-  their own column. "Show every bean" under the diagram unfolds it, and the page remembers the
-  choice. Solid: a call or a write. Dashed: an answer.
+- **Diagram.** One arrow per step, numbered. Columns run from what starts each entry point,
+  through entry points, beans and thread pools, to the tables and then the queues and systems
+  the flow sends to. Long names wrap onto two lines, and lifelines are spaced so that labels
+  read whole. A diagram wider than the text column runs out to the window's edges, and the
+  participant heads stay in view while the page scrolls. When it is wider than the window, the
+  tables share one "database" column and each arrow names its table; then every long name wraps
+  and a label longer than its arrow starts at the caller and runs on past the arrow's end; when
+  it is still too wide, a bean that only answers folds into its one caller ("bean +1 bean") and
+  its call becomes a loop labelled with it. In the report, an operation's flow takes the whole
+  width of its row. Beans that call on, queues, external systems and thread
+  pools always keep their own column, and what still does not fit scrolls sideways. "Show
+  every bean and table" under the diagram unfolds it, and the page remembers the choice.
+  Solid: a call or a write. Dashed: an answer.
   Dotted amber: another thread or a message. The purple band on a lifeline is a transaction.
   A hollow amber dot marks a step whose result is not durable yet. Grey bands start each entry
   point and name the link that leads to it. Click an arrow for its line of code.

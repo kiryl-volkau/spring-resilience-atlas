@@ -61,7 +61,10 @@
 .dg-async .dg-arrow{stroke:var(--amber-bar);stroke-dasharray:2 3;stroke-width:1.8}
 .dg-hit{stroke:transparent;stroke-width:14}
 .dg-head{fill:var(--muted)}
-.dg-l{font-size:inherit}
+.dg-l,.dg-sc-g{font-size:inherit;paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.dg-heads-bg{fill:var(--surface)}
+.dg-heads-rule{stroke:var(--border);opacity:0}
+.dg-stuck .dg-heads-rule{opacity:1}
 .dg-reply .dg-l{fill:var(--muted)!important}
 .dg-volatile{fill:var(--surface);stroke:var(--amber-bar);stroke-width:1.6}
 .dg-n{fill:var(--surface);stroke:var(--border-strong)}

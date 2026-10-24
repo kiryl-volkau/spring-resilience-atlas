@@ -196,6 +196,7 @@ tr.detail td{padding:0 12px 18px;background:var(--surface-2)}
 .detail-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:16px;align-items:start}
 @media (max-width:960px){.detail-grid{grid-template-columns:1fr}}
 .dcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+.dwide{grid-column:1/-1;display:flex;flex-direction:column;gap:12px;min-width:0}
 .dcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:0}
 .dcard h4{margin:0 0 10px;font-size:12px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 details.dcard > summary{cursor:pointer;list-style:none}
@@ -1081,8 +1082,7 @@ function findingHtml(fd) {
 function flowHtml(id) {
   var fl = D.flows[id];
   if (!fl) return '<p class="note">Flow <code>' + esc(id) + "</code> is referenced by the verdict, but its file is missing. The findings stand on their own evidence.</p>";
-  if (fl.schemaVersion === 2) return '<p><a href="' + esc(flowHref(FLOW_BY_ID[id] || {id: id})) + '">' + esc(fl.title) + " \u2197</a></p>" + flowBox(id);
-  var h = "<p><strong>" + esc(fl.title || fl.id) + "</strong></p>";
+  var h ="<p><strong>" + esc(fl.title || fl.id) + "</strong></p>";
   arr(fl.hops).forEach(function (x) { h += '<div class="hop">' + esc(x.order + ". " + x.symbol + (x.tx ? "  [" + x.tx + "]" : "") + (x.thread ? "  (" + x.thread + ")" : "")) + "</div>"; });
   if (arr(fl.boundaries).length) {
     h += '<p class="note"><strong>Boundaries</strong></p>';
@@ -1092,18 +1092,22 @@ function flowHtml(id) {
   return h;
 }
 function detailHtml(o) {
-  var left = "";
+  var left = "", flows = "";
+  function flowCard(f) {
+    return '<div class="dcard"><h4>Flow</h4><p><a href="' + esc(flowHref(f)) + '">' + esc(f.title) + " ↗</a>" +
+      (f.status === "STALE" ? ' <span class="sub">(the code changed since the trace)</span>' : "") + "</p>" + flowBox(f.id) + "</div>";
+  }
   if (o.verdict) {
-    var v = o.verdict;
+    var v = o.verdict, drawn = v.flowId && D.flows[v.flowId] && D.flows[v.flowId].schemaVersion === 2;
     left += '<div class="dcard"><h4>Audit verdict</h4><p>' + statusPill(o.colour, o) + " " + esc(human(v.tier)) + (v.model ? " · " + esc(v.model) : "") + "</p><p>" + esc(v.summary || "") + "</p>" +
       arr(o.findings).map(findingHtml).join("") +
-      (v.flowId ? '<h4 style="margin-top:14px">Flow</h4>' + flowHtml(v.flowId) : "") + "</div>";
+      (v.flowId && !drawn ? '<h4 style="margin-top:14px">Flow</h4>' + flowHtml(v.flowId) : "") + "</div>";
+    if (drawn) flows += flowCard(FLOW_BY_ID[v.flowId] || {id: v.flowId, title: D.flows[v.flowId].title});
   }
   arr(FLOWS_OF_OP[o.id]).forEach(function (f) {
-    if (o.verdict && o.verdict.flowId === f.id) return;
-    left += '<div class="dcard"><h4>Flow</h4><p><a href="' + esc(flowHref(f)) + '">' + esc(f.title) + " \u2197</a>" +
-      (f.status === "STALE" ? ' <span class="sub">(the code changed since the trace)</span>' : "") + "</p>" + flowBox(f.id) + "</div>";
+    if (!o.verdict || o.verdict.flowId !== f.id) flows += flowCard(f);
   });
+  var first = left.length;
   left += '<div class="dcard"><h4>' + (o.reasons.length ? "Why it has a hint" : "What the scanner read") + "</h4>";
   if (o.reasons.length) {
     var shown = {};
@@ -1119,8 +1123,13 @@ function detailHtml(o) {
     left += '<p class="sub" style="margin:0">' + (o.reach.analysed ? UNHINTED_LABEL[unhinted(o)] + ": no risk pattern on the path the scanner read." : "No hint: the call path was not analysed.") + "</p>";
   }
   left += reachHtml(o) + "</div>";
+  if (!first) first = left.length;
   if (o.effects.length) left += '<details class="dcard"' + (o.effects.length <= 6 ? " open" : "") + "><summary><h4>Everything seen on the path · " + o.effects.length + "</h4></summary>" + effectsTable(o) + "</details>";
-  return '<div class="detail-grid"><div class="dcol">' + left + '</div><div class="dcard"><h4>Operation</h4>' + factsHtml(o) + "</div></div>";
+  var facts = '<div class="dcard"><h4>Operation</h4>' + factsHtml(o) + "</div>";
+  if (!flows) return '<div class="detail-grid"><div class="dcol">' + left + "</div>" + facts + "</div>";
+  // A flow takes the row's whole width, under the first card, so that its diagram fits without scrolling sideways.
+  return '<div class="detail-grid"><div class="dcol">' + left.slice(0, first) + "</div>" + facts + '<div class="dwide">' + flows + "</div>" +
+    (left.length > first ? '<div class="dcol">' + left.slice(first) + "</div>" : "") + "</div>";
 }
 
 function find(id) { for (var i = 0; i < OPS.length; i++) if (OPS[i].id === id) return OPS[i]; return null; }
