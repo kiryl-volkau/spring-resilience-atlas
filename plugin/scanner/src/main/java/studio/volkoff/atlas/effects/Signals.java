@@ -24,6 +24,19 @@ public final class Signals {
     public static final String LOCK = "lock";
     public static final String IDEMPOTENCY = "idempotency-check";
     public static final String SELF_CALL = "self-invocation";
+    /** A catch on the path that swallows the failure of writes, sends or calls in its try block. */
+    public static final String SWALLOWED = "swallowed-failure";
+    /** An HTTP client on the path built without connect or read timeouts. */
+    public static final String NO_TIMEOUT = "no-timeout";
+    /** An executor on the path whose queue or thread count has no bound, or that drops queued tasks on shutdown. */
+    public static final String UNBOUNDED_POOL = "unbounded-executor";
+    /** A configuration fact of the operation's module, written by the scan from application config and migrations. */
+    public static final String CONFIG = "config";
+
+    /** Suffix of a message send whose result, the only report of a failed send, nothing reads. */
+    public static final String IGNORED = " (result ignored)";
+    /** Detail infix of a REQUIRES_NEW transaction opened while the caller's transaction holds a connection. */
+    public static final String NESTED = " inside the transaction of ";
 
     /** Suffix of an async effect whose result the same method waits for: parallel work, not a hand-off. */
     public static final String WAITED = " (waited for in the same method)";
@@ -248,4 +261,25 @@ public final class Signals {
 
     /** Repository methods that claim rows for one worker. */
     static final Pattern LOCK_METHOD = Pattern.compile("(lock|tryLock|acquire|tryAcquire|claim|reserve)([A-Z_].*)?");
+
+    /** Catch types that take every failure. */
+    static final Set<String> BROAD_CATCHES = Set.of("Exception", "Throwable", "RuntimeException", "Error");
+    /** Catch types that take the failures of remote calls and sends. */
+    static final Set<String> REMOTE_CATCHES = Set.of("RestClientException", "RestClientResponseException", "HttpClientErrorException",
+            "HttpServerErrorException", "HttpStatusCodeException", "ResourceAccessException", "UnknownHttpStatusCodeException",
+            "WebClientException", "WebClientResponseException", "WebClientRequestException", "FeignException", "RetryableException",
+            "IOException", "UncheckedIOException", "SocketTimeoutException", "ConnectException", "TimeoutException",
+            "SdkException", "SdkClientException", "SdkServiceException", "AwsServiceException", "AmazonServiceException",
+            "AmazonClientException", "StripeException", "ApiException", "WebServiceException", "SoapFaultClientException",
+            "WebServiceIOException", "MessagingException", "MailException", "KafkaException", "AmqpException", "JmsException");
+    /** Calls in a catch clause that hand the failure on: a negative ack, a dead letter, a failed state or a retry. */
+    static final Pattern FAILURE_HANDLING = Pattern.compile("(?i).*(nack|reject|deadletter|dlq|dlt|fail|retry|requeue|park|errorqueue|errortopic).*");
+
+    /** Sends that report a failure only through what they return: a future, a {@code Mono} or a boolean. */
+    static final Set<String> RESULT_SENDS = Set.of("KafkaTemplate.send", "KafkaTemplate.sendDefault", "KafkaOperations.send",
+            "KafkaOperations.sendDefault", "ReactiveKafkaProducerTemplate.send", "KafkaProducer.send", "Producer.send",
+            "SqsTemplate.sendAsync", "SqsTemplate.sendManyAsync", "SqsAsyncOperations.sendAsync", "SqsAsyncOperations.sendManyAsync",
+            "SqsAsyncClient.sendMessage", "SqsAsyncClient.sendMessageBatch", "SnsAsyncClient.publish", "StreamBridge.send",
+            "KinesisAsyncClient.putRecord", "KinesisAsyncClient.putRecords", "KinesisProducer.addUserRecord",
+            "EventBridgeAsyncClient.putEvents", "PubSubTemplate.publish", "PubSubPublisherTemplate.publish");
 }

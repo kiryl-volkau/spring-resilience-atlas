@@ -8,3 +8,4 @@ target	symbol	verdict	confidence
 /api/public/deliveries	PublicSiteController.recordCourierStatus	WEBHOOK	MEDIUM
 /api/public/feedback	PublicSiteController.submitFeedback	UNAUTHENTICATED_WRITE	
 /api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	WEBHOOK	HIGH
+/api/billing/ledger/webhooks/bank-transfer	LedgerController.receiveBankTransfer	WEBHOOK	MEDIUM

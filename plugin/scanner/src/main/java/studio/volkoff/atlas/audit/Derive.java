@@ -146,12 +146,14 @@ public final class Derive {
             v.put("status", stale ? "STALE" : "CURRENT");
             String colour;
             String summary;
-            if (current < ids.size()) {
-                colour = "GREY";
-                summary = current + " of " + ids.size() + " places checked" + (worst.row().get("summary") != null ? "; " + worst.row().get("summary") : "");
-            } else if (judged.stream().anyMatch(r -> "CONFIRMED".equals(r.verdict()))) {
+            String checked = current + " of " + ids.size() + " places checked";
+            if (judged.stream().anyMatch(r -> "CONFIRMED".equals(r.verdict()))) {
+                // One confirmed place is enough: an unchecked one cannot make the operation safe.
                 colour = "RED";
-                summary = String.valueOf(worst.row().get("summary"));
+                summary = (current < ids.size() ? checked + "; " : "") + worst.row().get("summary");
+            } else if (current < ids.size()) {
+                colour = "GREY";
+                summary = checked + (worst.row().get("summary") != null ? "; " + worst.row().get("summary") : "");
             } else if (judged.stream().anyMatch(r -> "UNCERTAIN".equals(r.verdict()))) {
                 colour = "GREY";
                 Object needs = openQuestion(worst.row());

@@ -48,9 +48,27 @@ public record MethodDecl(
      *                    when the target is a bare name ({@code receiver} null) or {@code this.name}
      *                    ({@code receiver} "this"). Assignments guarded by {@code if (name == null)}
      *                    are lazy initialisation and left out.
+     * @param catches     catch clauses, in source order
      */
-    public record Body(List<Site> sites, Map<String, String> locals, List<Site> assignments) {
-        public static final Body EMPTY = new Body(List.of(), Map.of(), List.of());
+    public record Body(List<Site> sites, Map<String, String> locals, List<Site> assignments, List<Catch> catches) {
+        public static final Body EMPTY = new Body(List.of(), Map.of(), List.of(), List.of());
+    }
+
+    /**
+     * One catch clause of a {@code try}.
+     *
+     * @param tryFrom        first line of the guarded block
+     * @param tryTo          last line of the guarded block
+     * @param line           line of the {@code catch}
+     * @param to             last line of the clause
+     * @param types          simple names of the caught types, one per alternative of a multi-catch
+     * @param rethrows       the clause throws, or calls a rethrow helper, outside any lambda or class body in it
+     * @param answersError   the clause sets or returns a 4xx or 5xx status
+     * @param calls          names of the methods the clause calls
+     * @param encl           as {@link Site#encl()}: the lambdas the {@code try} sits in, or null
+     */
+    public record Catch(int tryFrom, int tryTo, int line, int to, List<String> types, boolean rethrows, boolean answersError,
+                        List<String> calls, String encl) {
     }
 
     /**
@@ -70,9 +88,10 @@ public record MethodDecl(
      *                 {@code v:name} for a variable, {@code n:Type} for a {@code new}, {@code c:method}
      *                 for a call's result, {@code s} for a string literal, {@code ?} otherwise
      * @param returned the call is the method's return value, so the caller decides whether it waits for it
+     * @param discarded the call is a statement of its own: nothing reads what it returns
      */
     public record Site(String receiver, String name, int line, boolean chained, int args, String encl, String argType,
-                       String argHints, boolean returned) {
+                       String argHints, boolean returned, boolean discarded) {
         public static final String NEW = "<new>";
         /** {@code encl} of a lambda stored in a variable: it runs later, at a point the parse does not show. */
         public static final String LATER = "<later>";
@@ -82,7 +101,7 @@ public record MethodDecl(
         public static final String RESULT = "<result>";
 
         public Site(String receiver, String name, int line, boolean chained) {
-            this(receiver, name, line, chained, 0, null, null, null, false);
+            this(receiver, name, line, chained, 0, null, null, null, false, false);
         }
     }
 

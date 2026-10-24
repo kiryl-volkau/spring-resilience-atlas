@@ -45,6 +45,11 @@ exploration.
      failure can still happen. If your summary describes such a way, `remaining` must say it;
      the scanner then records the place as `CONFIRMED` (from MITIGATED) or `UNCERTAIN` (from
      REFUTED). A different problem you noticed belongs in the summary, not in `remaining`.
+   - A place whose evidence is a `config` effect is about the module's application config or
+     its newest migration, not about the operations' code. Judge it from the printed config or
+     migration lines. When the evidence says a key is not set, cite the config file's first
+     line and say in the claim which files you read; open a profile file the evidence names
+     only if it may set the key.
    - A `no-hint` place asks whether the scan missed a failure on an operation where no rule
      fired. `CONFIRMED` names the failure's rule code in `foundRule`, from the list in its section.
      `REFUTED` means you found none in what you read.

@@ -41,13 +41,18 @@ A level on the report (High, Medium, Low) is a code hint that says where to look
 not a verdict, and an operation without a hint is not declared safe. A place the quick check
 confirms is "suspected", not verified; "Checked (quick)" is not "safe".
 
+Most hints come from an operation's call path. A few come from its module instead: the
+`application` config (graceful shutdown, Open Session in View, Kafka auto-commit, `ddl-auto`,
+Feign timeouts) and the newest migration. Such a place is the config key or the migration
+file, it lists every operation the fact reaches, and it does not raise their own levels.
+
 ### Cost of the quick check
 
 The report costs nothing beyond one short Haiku turn. The quick check runs one `place-checker`
 agent (Haiku by default) per batch of up to eight places; the plan prints its token and dollar
 estimate before anything runs, and the run stops at the cap (twice the estimate unless you set
 `--max-usd`). Places already checked are not checked again until their code changes. On the
-plugin's test application, 16 places cost $0.04 to $0.05 on Haiku, close to the estimate.
+plugin's test application, 40 places cost $0.10 on Haiku, close to the estimate.
 
 The cap applies to the plugin's estimate of each batch, counted when the batch starts. The
 plugin cannot see your bill, so the real cost can differ from the estimate.

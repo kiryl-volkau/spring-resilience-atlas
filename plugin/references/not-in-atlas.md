@@ -19,3 +19,6 @@ that the atlas does not cover it and how to check instead.
 | Spring Cloud Gateway routes (YAML `spring.cloud.gateway.routes` or `RouteLocator` beans). A warning names the dependency | read the gateway configuration |
 | Effects of operations whose code is not parsed: Kotlin, Groovy and regex-fallback records have `analysed: false` in `effects.jsonl` and no signals | open the code |
 | Effects deeper than three bean hops, or on objects whose type is not declared in the sources (lambda parameters, Lombok-generated fields, library return values) | follow the path with the `critical-flow-tracer` skill |
+| Configuration outside the main `application*` and `bootstrap*` files: environment variables, command-line arguments, a config server, Kubernetes or Helm values, profiles named like `local`, `dev` or `test`. Config rules judge only what those files say | read the deployment's environment and manifests |
+| Migrations other than the newest under each migration root, and Liquibase changes written over several YAML lines | open the migration files |
+| Which `@Bean` a field gets when several of its type exist and no qualifier or name decides: the timeout and executor checks then say nothing | open the configuration class |

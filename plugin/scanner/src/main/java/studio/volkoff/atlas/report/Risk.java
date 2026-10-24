@@ -26,29 +26,43 @@ public final class Risk {
         }
     }
 
-    public record Assessment(Level level, int score, List<Reason> reasons, List<String> mitigations, boolean mutating) {
+    /**
+     * @param reasons       the rules that fired on the operation's own path; they set its level and score
+     * @param moduleReasons the rules that fired on its module's config or migrations: they form places, but one
+     *                      fact of a module does not rank each of its operations
+     */
+    public record Assessment(Level level, int score, List<Reason> reasons, List<String> mitigations, boolean mutating,
+                             List<Reason> moduleReasons) {
     }
 
     /**
      * What the rest of the atlas says about an operation's effects.
      *
      * @param listenerSubkinds for each event type, the subkinds of the listeners that handle it
+     * @param needsTransaction event types with an after-commit listener that has no {@code fallbackExecution}:
+     *                         published outside a transaction, that listener never runs
      */
-    public record Context(Map<String, Set<String>> listenerSubkinds) {
-        public static final Context EMPTY = new Context(Map.of());
+    public record Context(Map<String, Set<String>> listenerSubkinds, Set<String> needsTransaction) {
+        public static final Context EMPTY = new Context(Map.of(), Set.of());
 
         /** Built from {@code entrypoints.jsonl} rows: the event listeners and their subkinds. */
         public static Context from(List<Map<String, Object>> entryPoints) {
             Map<String, Set<String>> out = new java.util.HashMap<>();
+            Set<String> needsTx = new java.util.HashSet<>();
             for (Map<String, Object> ep : entryPoints) {
                 if (!"EVENT".equals(ep.get("kind"))) {
                     continue;
                 }
+                String subkind = String.valueOf(ep.get("subkind"));
+                boolean strict = AFTER_COMMIT_LISTENERS.contains(subkind) && !"true".equals(String.valueOf(attrs(ep).get("fallbackExecution")));
                 for (String type : String.valueOf(ep.get("target")).split(",")) {
-                    out.computeIfAbsent(type.strip(), k -> new LinkedHashSet<>()).add(String.valueOf(ep.get("subkind")));
+                    out.computeIfAbsent(type.strip(), k -> new LinkedHashSet<>()).add(subkind);
+                    if (strict) {
+                        needsTx.add(type.strip());
+                    }
                 }
             }
-            return new Context(out);
+            return new Context(out, needsTx);
         }
     }
 
@@ -112,6 +126,46 @@ public final class Risk {
                 "Plain @EventListener methods run before the commit. If the transaction rolls back, they have already acted on data that does not exist.");
         rule("read-verb-writes", "Read-only HTTP verb changes data",
                 "GET and HEAD are retried and prefetched freely by clients and proxies. A write here repeats on every retry.");
+        rule("after-commit-listener-writes-db", "Writes in an after-commit listener are never committed",
+                "The listener runs after the commit, while the finished transaction is still bound to the thread. Writes without a new transaction (REQUIRES_NEW) join it, and nothing commits them.");
+        rule("after-commit-listener-without-transaction", "Event published outside a transaction to an after-commit listener",
+                "A @TransactionalEventListener runs only when its event is published inside a transaction, unless it sets fallbackExecution. Here no transaction is open, so the listener silently never runs.");
+        rule("read-only-tx-writes", "Write inside a read-only transaction",
+                "The write runs in a transaction marked readOnly. Hibernate does not flush changed entities there and some drivers reject the write, so the change is lost or fails.");
+        rule("lock-held-across-remote-call", "Row lock held during a remote call",
+                "The transaction locks rows and then waits for a remote service. Every other writer of those rows waits as long as the remote side does, and a slow provider turns into lock timeouts.");
+        rule("flush-on-shutdown", "Work saved only when the application stops",
+                "A shutdown hook writes, sends or calls out. A kill, an out-of-memory crash or an expired grace period skips it, so whatever it was meant to save is lost.");
+        rule("startup-remote-call", "Remote call while the application starts",
+                "Startup waits for a remote service and fails if it is down. A partner outage then blocks every deploy, restart and scale-out.");
+        rule("quartz-concurrent-execution", "Quartz job can overlap with itself",
+                "The job has no @DisallowConcurrentExecution. When a run outlasts its trigger interval, or a misfire fires it again, two runs of the job work on the same data at once.");
+        rule("consumer-swallows-failure", "Consumer catches the failure and acknowledges",
+                "A catch on the consumer's path takes the exception and does not rethrow it. The listener returns normally, the broker deletes the message and the failed work is never retried.");
+        rule("http-client-without-timeout", "HTTP client without timeouts",
+                "The client is built without connect or read timeouts, so a hung partner holds the calling thread forever. Request, listener and job threads pile up behind it.");
+        rule("remote-failure-swallowed", "Failed remote call or send only logged",
+                "A catch takes the failure of a remote call or a message send and carries on. The caller sees success, and nothing retries or records the failed side effect.");
+        rule("send-result-ignored", "Message send result ignored",
+                "This send reports a failure only through the future or flag it returns, and nothing reads it. A broker that rejects or times out the message loses it while the caller carries on.");
+        rule("executor-unbounded-queue", "Work queued on an unbounded executor",
+                "The executor that takes this work has no queue or thread limit, or drops queued tasks on shutdown. A burst grows memory without bound, and a deploy loses what is still queued.");
+        rule("nested-requires-new-in-tx", "New transaction opened inside another one",
+                "REQUIRES_NEW suspends the caller's transaction but keeps its connection, and takes a second one. Under load every thread holds one connection and waits for another: the pool deadlocks.");
+        rule("request-answers-ok-on-failure", "Request answers success after a failure",
+                "The handler catches the failure and returns normally, so the caller gets a success status. A provider or client that would have retried an error never does.");
+        rule("graceful-shutdown-off", "Web server stops without draining requests",
+                "server.shutdown is not graceful, so a deploy or scale-in stops the web server at once. Requests in flight are cut, half done, and clients see connection errors they may retry.");
+        rule("open-in-view-enabled", "Database connection held for the whole request",
+                "Open Session in View keeps the request's persistence context, and its database connection, until the response is written. A slow remote call after the transaction holds a pooled connection for its whole duration.");
+        rule("kafka-auto-commit", "Kafka offsets committed automatically",
+                "enable-auto-commit lets the consumer commit offsets on a timer, whether or not processing finished. A crash after the commit loses the messages that were still being processed.");
+        rule("ddl-auto-in-production", "Hibernate changes the schema at startup",
+                "ddl-auto lets Hibernate create or alter tables when the application starts. Schema changes then happen unreviewed during deploys, while other replicas run the old code; create and create-drop also wipe data.");
+        rule("feign-default-timeouts", "Feign clients on default timeouts",
+                "No connect or read timeout is configured for Feign, so every call may wait 60 seconds for an answer. A slow partner ties up request threads for a minute each.");
+        rule("destructive-migration", "Newest migration drops or rewrites a column or table",
+                "The migration the next deploy applies drops, renames or retypes what this operation writes. During a rolling deploy the replicas still on the old code fail against the new schema.");
         rule(Places.NO_HINT, "No pattern matched",
                 "The operation writes, sends, calls out or opens a transaction, but no rule fired. Not a hint: the quick check can sweep it for a failure the rules missed.");
     }
@@ -119,9 +173,25 @@ public final class Risk {
     private static final Set<String> REQUEST_KINDS = Set.of("HTTP", "SOAP", "GRPC", "GRAPHQL", "WEBSOCKET", "ROUTER", "ACTUATOR", "PORTLET");
     private static final Set<String> TRIGGER_KINDS = Set.of("SCHEDULED", "JOB");
     private static final Set<String> MUTATING_VERBS = Set.of("POST", "PUT", "PATCH", "DELETE", "ANY", "");
+    /** Module rules by the symbol of the config effect that carries them. */
+    private static final Map<String, String> MODULE_RULE_BY_KEY = Map.of(
+            "server.shutdown", "graceful-shutdown-off",
+            "spring.jpa.open-in-view", "open-in-view-enabled",
+            "spring.kafka.consumer.enable-auto-commit", "kafka-auto-commit",
+            "spring.jpa.hibernate.ddl-auto", "ddl-auto-in-production",
+            "spring.cloud.openfeign.client.config", "feign-default-timeouts");
+    /** Rules about a module's config or migrations rather than an operation's path. */
+    public static final Set<String> MODULE_RULES = Set.of("graceful-shutdown-off", "open-in-view-enabled", "kafka-auto-commit",
+            "ddl-auto-in-production", "feign-default-timeouts", "destructive-migration");
     /** Events published once while the application starts: their listeners behave like startup hooks. */
     private static final Set<String> STARTUP_EVENTS = Set.of("ApplicationReadyEvent", "ApplicationStartedEvent",
             "ContextRefreshedEvent", "ContextStartedEvent", "WebServerInitializedEvent", "ServletWebServerInitializedEvent");
+    private static final Set<String> STARTUP_HOOKS = Set.of("POST_CONSTRUCT", "AFTER_PROPERTIES_SET", "APPLICATION_RUNNER",
+            "COMMAND_LINE_RUNNER", "LIFECYCLE_START");
+    private static final Set<String> SHUTDOWN_HOOKS = Set.of("PRE_DESTROY", "DESTROY", "LIFECYCLE_STOP", "SHUTDOWN_HOOK");
+    private static final Set<String> SHUTDOWN_EVENTS = Set.of("ContextClosedEvent", "ContextStoppedEvent");
+    /** Stores outside the JPA or JDBC transaction: a read-only flag on it does not touch them. */
+    private static final Pattern OTHER_STORE = Pattern.compile("^(Redis|MongoDB|DynamoDB) ");
     /** Return types with which the client waits for work done on another thread. */
     private static final Set<String> ASYNC_RESPONSES = Set.of("Mono", "Flux", "CompletableFuture", "CompletionStage",
             "DeferredResult", "Callable", "WebAsyncTask", "ListenableFuture", "Future", "SseEmitter", "ResponseBodyEmitter",
@@ -319,6 +389,10 @@ public final class Risk {
         if (kind.equals("HTTP") && !mutating && !concat(plainWrites, sends).isEmpty()) {
             reasons.add(new Reason("read-verb-writes", Level.LOW, concat(plainWrites, sends)));
         }
+        lifecycleAndListeners(ep, effects, context, business, plainWrites, sends, external, events, changes, locked, perInstance, reasons);
+        // Work that the client waits for, or a loop started once at startup, is not a queue that fills up.
+        List<Integer> queued = asyncResponse || startup ? List.of() : concat(business, notifications);
+        failures(ep, effects, consumer, webhook, mutating, business, queued, plainWrites, sends, external, reasons);
 
         reasons.sort(Comparator.comparingInt(r -> r.level().ordinal()));
         Level level = reasons.isEmpty() ? Level.NONE : reasons.get(0).level();
@@ -335,7 +409,238 @@ public final class Risk {
         if (!outbox.isEmpty()) {
             mitigations.add("outbox");
         }
-        return new Assessment(level, score(kind, mutating, webhook, level, reasons, effects), reasons, mitigations, mutating);
+        return new Assessment(level, score(kind, mutating, webhook, level, reasons, effects), reasons, mitigations, mutating,
+                moduleReasons(effects));
+    }
+
+    /** One reason per module rule, from the config effects the scan attached to the operation. */
+    private static List<Reason> moduleReasons(List<Map<String, Object>> effects) {
+        Map<String, List<Integer>> byCode = new LinkedHashMap<>();
+        Map<String, Level> levels = new LinkedHashMap<>();
+        for (int i : matching(effects, Signals.CONFIG)) {
+            String d = detail(effects, i);
+            String code = d.startsWith("migration ") ? "destructive-migration" : MODULE_RULE_BY_KEY.get(String.valueOf(effects.get(i).get("symbol")));
+            if (code == null) {
+                continue;
+            }
+            byCode.computeIfAbsent(code, k -> new ArrayList<>()).add(i);
+            Level level = switch (code) {
+                case "kafka-auto-commit" -> Level.HIGH;
+                case "ddl-auto-in-production" -> d.contains(": create") ? Level.HIGH : Level.MEDIUM;
+                case "feign-default-timeouts" -> Level.LOW;
+                default -> Level.MEDIUM;
+            };
+            levels.merge(code, level, (a, b) -> a.ordinal() <= b.ordinal() ? a : b);
+        }
+        List<Reason> out = new ArrayList<>();
+        byCode.forEach((code, ev) -> out.add(new Reason(code, levels.get(code), ev)));
+        out.sort(Comparator.comparingInt(r -> r.level().ordinal()));
+        return out;
+    }
+
+    /** Rules about transactions seen from listeners, startup and shutdown hooks, locks and jobs. */
+    private static void lifecycleAndListeners(Map<String, Object> ep, List<Map<String, Object>> effects, Context context,
+                                              List<Integer> business, List<Integer> plainWrites, List<Integer> sends,
+                                              List<Integer> external, List<Integer> events, List<Integer> changes, boolean locked,
+                                              boolean perInstance, List<Reason> reasons) {
+        String kind = String.valueOf(ep.get("kind"));
+        String subkind = String.valueOf(ep.get("subkind"));
+        String target = String.valueOf(ep.get("target"));
+        Map<String, Object> attrs = attrs(ep);
+        boolean asyncEntry = Boolean.TRUE.equals(attrs.get("async"))
+                || effects.stream().anyMatch(e -> String.valueOf(e.get("detail")).startsWith("entry method runs on an executor"));
+        if (kind.equals("EVENT") && subkind.equals("TRANSACTIONAL_EVENT_LISTENER") && !"BEFORE_COMMIT".equals(attrs.get("phase")) && !asyncEntry) {
+            List<Integer> lost = new ArrayList<>();
+            for (int i : plainWrites) {
+                if (!inNewTransaction(effects, i)) {
+                    lost.add(i);
+                }
+            }
+            if (!lost.isEmpty()) {
+                reasons.add(new Reason("after-commit-listener-writes-db", Level.HIGH, lost));
+            }
+        }
+        List<Integer> unheard = new ArrayList<>();
+        for (int i : events) {
+            Map<String, Object> e = effects.get(i);
+            if (!Boolean.TRUE.equals(e.get("inTx")) && !Boolean.TRUE.equals(e.get("inReadOnlyTx"))
+                    && context.needsTransaction().contains(eventType(detail(effects, i)))) {
+                unheard.add(i);
+            }
+        }
+        if (!unheard.isEmpty()) {
+            reasons.add(new Reason("after-commit-listener-without-transaction", Level.HIGH, unheard));
+        }
+        List<Integer> readOnlyWrites = new ArrayList<>();
+        for (int i : plainWrites) {
+            Map<String, Object> e = effects.get(i);
+            if (Boolean.TRUE.equals(e.get("inReadOnlyTx")) && !Boolean.TRUE.equals(e.get("inTx")) && !OTHER_STORE.matcher(detail(effects, i)).find()) {
+                readOnlyWrites.add(i);
+            }
+        }
+        if (!readOnlyWrites.isEmpty()) {
+            reasons.add(new Reason("read-only-tx-writes", Level.MEDIUM, readOnlyWrites));
+        }
+        Map<String, List<Integer>> rowLocks = new LinkedHashMap<>();
+        for (int i : matching(effects, Signals.LOCK)) {
+            Object owner = effects.get(i).get("txOwner");
+            if (detail(effects, i).startsWith("row lock") && Boolean.TRUE.equals(effects.get(i).get("inTx")) && owner != null) {
+                rowLocks.computeIfAbsent(owner.toString(), k -> new ArrayList<>()).add(i);
+            }
+        }
+        List<Integer> heldLocks = new ArrayList<>();
+        for (int i : external) {
+            List<Integer> locks = rowLocks.get(String.valueOf(effects.get(i).get("txOwner")));
+            if (locks != null && Boolean.TRUE.equals(effects.get(i).get("inTx")) && !READ_CALL.matcher(detail(effects, i)).find()) {
+                heldLocks.addAll(locks);
+                heldLocks.add(i);
+            }
+        }
+        if (!heldLocks.isEmpty()) {
+            reasons.add(new Reason("lock-held-across-remote-call", Level.MEDIUM, concat(heldLocks)));
+        }
+        List<Integer> outward = new ArrayList<>();
+        for (int i : external) {
+            if (!READ_CALL.matcher(detail(effects, i)).find()) {
+                outward.add(i);
+            }
+        }
+        boolean stopping = kind.equals("LIFECYCLE") && SHUTDOWN_HOOKS.contains(subkind) || kind.equals("EVENT") && SHUTDOWN_EVENTS.contains(target);
+        if (stopping && !concat(plainWrites, sends, outward).isEmpty()) {
+            reasons.add(new Reason("flush-on-shutdown", Level.MEDIUM, concat(plainWrites, sends, outward)));
+        }
+        boolean starting = kind.equals("LIFECYCLE") && STARTUP_HOOKS.contains(subkind) || kind.equals("EVENT") && STARTUP_EVENTS.contains(target);
+        List<Integer> blocking = new ArrayList<>();
+        for (int i : external) {
+            if (effects.get(i).get("caughtAt") == null) {
+                blocking.add(i);
+            }
+        }
+        // Calls in work handed to another thread do not hold startup back; the hand-off has its own rule.
+        if (starting && business.isEmpty() && !blocking.isEmpty()) {
+            reasons.add(new Reason("startup-remote-call", Level.MEDIUM, blocking));
+        }
+        if (kind.equals("JOB") && subkind.equals("QUARTZ") && !Boolean.TRUE.equals(attrs.get("disallowConcurrent"))
+                && !changes.isEmpty() && !locked && !perInstance) {
+            reasons.add(new Reason("quartz-concurrent-execution", Level.MEDIUM, changes));
+        }
+    }
+
+    /** Rules about failures that nobody hears of: swallowed exceptions, ignored send results, unbounded clients and pools. */
+    private static void failures(Map<String, Object> ep, List<Map<String, Object>> effects, boolean consumer,
+                                 boolean webhook, boolean mutating, List<Integer> business, List<Integer> queued,
+                                 List<Integer> plainWrites, List<Integer> sends, List<Integer> external, List<Reason> reasons) {
+        String kind = String.valueOf(ep.get("kind"));
+        Map<String, Integer> catchAt = new LinkedHashMap<>();
+        for (int i : matching(effects, Signals.SWALLOWED)) {
+            catchAt.put(effects.get(i).get("file") + ":" + effects.get(i).get("line"), i);
+        }
+        if (consumer) {
+            List<Integer> lost = caught(effects, concat(plainWrites, sends, external), catchAt);
+            if (!lost.isEmpty()) {
+                boolean atEntry = lost.stream().anyMatch(i -> catchAt.containsValue(i) && hop(effects, i) == 0);
+                reasons.add(new Reason("consumer-swallows-failure", atEntry ? Level.HIGH : Level.MEDIUM, lost));
+            }
+        }
+        Set<String> answeredAt = new LinkedHashSet<>();
+        if ((kind.equals("HTTP") || kind.equals("SOAP")) && mutating) {
+            List<Integer> entryCatches = new ArrayList<>();
+            catchAt.forEach((at, i) -> {
+                if (hop(effects, i) == 0) {
+                    entryCatches.add(i);
+                    answeredAt.add(at);
+                }
+            });
+            List<Integer> covered = new ArrayList<>();
+            for (int i : concat(plainWrites, sends, external, business)) {
+                if (answeredAt.contains(String.valueOf(effects.get(i).get("caughtAt")))) {
+                    covered.add(i);
+                }
+            }
+            if (!covered.isEmpty()) {
+                reasons.add(new Reason("request-answers-ok-on-failure", webhook ? Level.HIGH : Level.MEDIUM, concat(entryCatches, covered)));
+            }
+        }
+        if (!consumer) {
+            List<Integer> outward = new ArrayList<>();
+            for (int i : concat(sends, external)) {
+                String d = detail(effects, i);
+                Object at = effects.get(i).get("caughtAt");
+                if (at != null && !answeredAt.contains(at.toString()) && !READ_CALL.matcher(d).find()
+                        && !isNotification(d + " " + effects.get(i).get("symbol"))) {
+                    outward.add(i);
+                }
+            }
+            List<Integer> lost = caught(effects, outward, catchAt);
+            if (!lost.isEmpty()) {
+                reasons.add(new Reason("remote-failure-swallowed", Level.MEDIUM, lost));
+            }
+        }
+        List<Integer> ignored = new ArrayList<>();
+        for (int i : sends) {
+            if (detail(effects, i).endsWith(Signals.IGNORED)) {
+                ignored.add(i);
+            }
+        }
+        if (!ignored.isEmpty()) {
+            reasons.add(new Reason("send-result-ignored", Level.MEDIUM, ignored));
+        }
+        List<Integer> unbounded = matching(effects, Signals.NO_TIMEOUT);
+        if (!unbounded.isEmpty()) {
+            List<Integer> http = new ArrayList<>();
+            for (int i : external) {
+                if (detail(effects, i).startsWith("HTTP ")) {
+                    http.add(i);
+                }
+            }
+            reasons.add(new Reason("http-client-without-timeout", Level.MEDIUM, concat(unbounded, http)));
+        }
+        List<Integer> pools = matching(effects, Signals.UNBOUNDED_POOL);
+        if (!pools.isEmpty() && !queued.isEmpty()) {
+            reasons.add(new Reason("executor-unbounded-queue", Level.MEDIUM, concat(pools, queued)));
+        }
+        List<Integer> nested = new ArrayList<>();
+        for (int i : matching(effects, Signals.TX)) {
+            if (detail(effects, i).contains(Signals.NESTED)) {
+                nested.add(i);
+            }
+        }
+        if (!nested.isEmpty()) {
+            reasons.add(new Reason("nested-requires-new-in-tx", Level.MEDIUM, nested));
+        }
+    }
+
+    /** The catches that swallow the failures of {@code indexes}, followed by the effects whose failure they swallow. */
+    private static List<Integer> caught(List<Map<String, Object>> effects, List<Integer> indexes, Map<String, Integer> catchAt) {
+        List<Integer> catches = new ArrayList<>();
+        List<Integer> covered = new ArrayList<>();
+        for (int i : indexes) {
+            Integer c = catchAt.get(String.valueOf(effects.get(i).get("caughtAt")));
+            if (c != null) {
+                catches.add(c);
+                covered.add(i);
+            }
+        }
+        return covered.isEmpty() ? List.of() : concat(catches, covered);
+    }
+
+    /** The write runs in a transaction that its own path opened with REQUIRES_NEW. */
+    private static boolean inNewTransaction(List<Map<String, Object>> effects, int i) {
+        Object owner = effects.get(i).get("txOwner");
+        if (owner == null || !Boolean.TRUE.equals(effects.get(i).get("inTx"))) {
+            return false;
+        }
+        for (int t : matching(effects, Signals.TX)) {
+            if (owner.equals(effects.get(t).get("symbol")) && detail(effects, t).contains("REQUIRES_NEW")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String eventType(String detail) {
+        int open = detail.lastIndexOf('(');
+        return open < 0 || !detail.endsWith(")") ? "" : detail.substring(open + 1, detail.length() - 1);
     }
 
     /** Whether every listener of the event published at this effect runs after the commit. */

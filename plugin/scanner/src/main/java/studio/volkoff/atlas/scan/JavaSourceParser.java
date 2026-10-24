@@ -3,9 +3,11 @@ package studio.volkoff.atlas.scan;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.BinaryTree;
+import com.sun.source.tree.CatchTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
@@ -21,9 +23,12 @@ import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.ReturnTree;
+import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.TryTree;
 import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.UnaryTree;
+import com.sun.source.tree.UnionTypeTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.SourcePositions;
@@ -62,6 +67,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.regex.Pattern;
 
 /**
  * Parses Java sources with the running JDK's javac (parse only, no attribution) into the atlas model.
@@ -335,6 +341,7 @@ public final class JavaSourceParser {
             List<MethodDecl> methods = new ArrayList<>();
             Set<String> referenced = new LinkedHashSet<>();
             List<ClassTree> nestedTrees = new ArrayList<>();
+            Map<String, TypeDecl.FieldInit> fieldInits = new LinkedHashMap<>();
             for (Tree member : ct.getMembers()) {
                 if (member instanceof VariableTree vt) {
                     if (kind == TypeDecl.Kind.ENUM && vt.getInitializer() instanceof NewClassTree nc
@@ -351,6 +358,7 @@ public final class JavaSourceParser {
                     }
                     if (vt.getInitializer() != null) {
                         collectNewTypes(vt.getInitializer(), referenced);
+                        fieldInits.put(vt.getName().toString(), new TypeDecl.FieldInit(line(vt), vt.getInitializer().toString()));
                     }
                 } else if (member instanceof MethodTree mt) {
                     MethodDecl md = method(mt, isInterfaceLike, camelBuilder);
@@ -364,6 +372,7 @@ public final class JavaSourceParser {
             TypeDecl type = new TypeDecl(fqnPrefix + simple, simple, displayPrefix + simple, kind,
                     flags.contains(Modifier.ABSTRACT) || isInterfaceLike, line(ct), annos(ct.getModifiers()),
                     supers, hasSuperclass, fields, fieldTypes, enumConstants, methods, referenced, enclosing);
+            type.fieldInits.putAll(fieldInits);
             types.add(type);
             for (ClassTree nested : nestedTrees) {
                 type.nested.add(convertType(nested, type.fqn + ".", type.displayName + ".", type));
@@ -389,7 +398,7 @@ public final class JavaSourceParser {
             if (mt.getBody() != null) {
                 BodyScanner scanner = new BodyScanner(calls, newTypes, routes, fromCalls, permitAll, collectRoutes, camelBuilder);
                 scanner.scan(mt.getBody(), null);
-                body = new MethodDecl.Body(scanner.sites, scanner.locals, scanner.assignments);
+                body = new MethodDecl.Body(scanner.sites, scanner.locals, scanner.assignments, scanner.catches);
             }
             boolean isPublic = flags.contains(Modifier.PUBLIC) || (inInterface && !flags.contains(Modifier.PRIVATE));
             return new MethodDecl(mt.getName().toString(), annos(mt.getModifiers()), line(mt), endLine(mt), returnType, params,
@@ -415,6 +424,9 @@ public final class JavaSourceParser {
             final List<MethodDecl.Site> sites = new ArrayList<>();
             final Map<String, String> locals = new LinkedHashMap<>();
             final List<MethodDecl.Site> assignments = new ArrayList<>();
+            final List<MethodDecl.Catch> catches = new ArrayList<>();
+            /** Calls that are statements of their own. */
+            private final Set<Tree> statements = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
             /** The innermost call or {@code new} whose lambda or anonymous-class argument is being scanned. */
             private String encl;
             /** The expression of the {@code return} statement being scanned. */
@@ -504,7 +516,7 @@ public final class JavaSourceParser {
                 String type = simpleTypeName(node.getIdentifier().toString());
                 newTypes.add(type);
                 sites.add(new MethodDecl.Site(MethodDecl.Site.NEW, intern(type), line(node), false, node.getArguments().size(),
-                        encl, firstArgType(node.getArguments()), null, false));
+                        encl, firstArgType(node.getArguments()), null, false, false));
                 scan(node.getEnclosingExpression(), unused);
                 scan(node.getIdentifier(), unused);
                 scan(node.getTypeArguments(), unused);
@@ -532,7 +544,7 @@ public final class JavaSourceParser {
                             : q instanceof MemberSelectTree ms ? (isThis(ms.getExpression()) ? ms.getIdentifier().toString() : ms.toString())
                             : null;
                     if (receiver != null) {
-                        sites.add(new MethodDecl.Site(intern(receiver), intern(name), line(node), false, -1, encl, null, null, false));
+                        sites.add(new MethodDecl.Site(intern(receiver), intern(name), line(node), false, -1, encl, null, null, false, false));
                     }
                 }
                 return super.visitMemberReference(node, unused);
@@ -590,6 +602,36 @@ public final class JavaSourceParser {
                 super.visitReturn(node, unused);
                 returning = previous;
                 return null;
+            }
+
+            @Override
+            public Void visitExpressionStatement(ExpressionStatementTree node, Void unused) {
+                ExpressionTree e = node.getExpression();
+                while (e instanceof ParenthesizedTree p) {
+                    e = p.getExpression();
+                }
+                if (e instanceof MethodInvocationTree) {
+                    statements.add(e);
+                }
+                return super.visitExpressionStatement(node, unused);
+            }
+
+            @Override
+            public Void visitTry(TryTree node, Void unused) {
+                int from = line(node.getBlock());
+                int to = endLine(node.getBlock());
+                for (CatchTree c : node.getCatches()) {
+                    Tree type = c.getParameter().getType();
+                    List<String> types = new ArrayList<>();
+                    for (Tree alt : type instanceof UnionTypeTree u ? u.getTypeAlternatives() : type == null ? List.<Tree>of() : List.of(type)) {
+                        types.add(intern(simpleTypeName(alt.toString())));
+                    }
+                    ClauseScanner clause = new ClauseScanner();
+                    clause.scan(c.getBlock(), null);
+                    catches.add(new MethodDecl.Catch(from, to, line(c), endLine(c.getBlock()), List.copyOf(types), clause.rethrows,
+                            ERROR_ANSWER.matcher(c.getBlock().toString()).find(), List.copyOf(clause.calls), encl));
+                }
+                return super.visitTry(node, unused);
             }
 
             @Override
@@ -654,7 +696,7 @@ public final class JavaSourceParser {
                     }
                 }
                 boolean qualified = target instanceof MemberSelectTree;
-                assignments.add(new MethodDecl.Site(qualified ? "this" : null, intern(name), line(target), false, 0, encl, null, null, false));
+                assignments.add(new MethodDecl.Site(qualified ? "this" : null, intern(name), line(target), false, 0, encl, null, null, false, false));
             }
 
             private static String assignedName(ExpressionTree target) {
@@ -669,8 +711,9 @@ public final class JavaSourceParser {
                 String argType = firstArgType(node.getArguments());
                 String hints = argHints(node.getArguments());
                 boolean returned = node == returning;
+                boolean discarded = statements.contains(node);
                 if (!(node.getMethodSelect() instanceof MemberSelectTree ms)) {
-                    sites.add(new MethodDecl.Site(null, intern(name), line(node), false, args, encl, argType, hints, returned));
+                    sites.add(new MethodDecl.Site(null, intern(name), line(node), false, args, encl, argType, hints, returned, discarded));
                     return null;
                 }
                 ExpressionTree e = ms.getExpression();
@@ -700,7 +743,7 @@ public final class JavaSourceParser {
                     return null;
                 }
                 receiver = intern(receiver);
-                sites.add(new MethodDecl.Site(receiver, intern(name), line(node), chained, args, encl, argType, hints, returned));
+                sites.add(new MethodDecl.Site(receiver, intern(name), line(node), chained, args, encl, argType, hints, returned, discarded));
                 return receiver;
             }
 
@@ -859,6 +902,46 @@ public final class JavaSourceParser {
                     return super.visitNewClass(node, unused);
                 }
             }.scan(t, null);
+        }
+
+        /** A catch clause that answers an error status: the caller learns the request failed. */
+        private static final Pattern ERROR_ANSWER = Pattern.compile("badRequest|internalServerError|unprocessableEntity|notFound\\(|sendError"
+                + "|status\\(\\s*[45]\\d\\d|setStatus\\(\\s*[45]\\d\\d|SC_(INTERNAL|BAD|SERVICE|CONFLICT|UNPROCESSABLE)"
+                + "|HttpStatus\\s*\\.\\s*(BAD_|INTERNAL_|SERVICE_|UNPROCESSABLE|CONFLICT|GATEWAY|TOO_MANY|NOT_FOUND|FORBIDDEN|UNAUTHORIZED|PRECONDITION|LOCKED|FAILED)"
+                + "|Status\\.(INTERNAL_SERVER_ERROR|BAD_REQUEST|SERVICE_UNAVAILABLE|CONFLICT)");
+        /** Helpers that throw what they are given. */
+        private static final Pattern RETHROW = Pattern.compile("rethrow\\w*|propagate|sneakyThrow|throwIf\\w*|throwAs\\w*|handleReflectionException");
+
+        /** A catch clause's own statements: lambdas and class bodies in it run elsewhere. */
+        private static final class ClauseScanner extends TreeScanner<Void, Void> {
+            boolean rethrows;
+            final Set<String> calls = new LinkedHashSet<>();
+
+            @Override
+            public Void visitThrow(ThrowTree node, Void unused) {
+                rethrows = true;
+                return super.visitThrow(node, unused);
+            }
+
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
+                String name = invokedName(node);
+                if (name != null) {
+                    calls.add(intern(name));
+                    rethrows |= RETHROW.matcher(name).matches();
+                }
+                return super.visitMethodInvocation(node, unused);
+            }
+
+            @Override
+            public Void visitLambdaExpression(LambdaExpressionTree node, Void unused) {
+                return null;
+            }
+
+            @Override
+            public Void visitClass(ClassTree node, Void unused) {
+                return null;
+            }
         }
 
         private int line(Tree t) {

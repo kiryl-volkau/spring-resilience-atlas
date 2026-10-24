@@ -120,12 +120,16 @@ What the atlas cannot see is listed by `doc not-in-atlas.md`.
   - Same-arity overloads are told apart by the types of the arguments passed.
   - Lambdas and anonymous classes handed to executors or after-commit callbacks run outside the
     caller's transaction. `TransactionTemplate` callbacks run inside one.
-- **Each effect** is `{signal, detail, file, line, symbol, hop, inTx, inReadOnlyTx?, txOwner?, txOwnerAt?}`.
+- **Each effect** is `{signal, detail, file, line, symbol, hop, inTx, inReadOnlyTx?, txOwner?, txOwnerAt?, caughtAt?}`.
   - `hop` is the number of bean boundaries crossed.
   - `inTx` means a read-write transaction is open at that point. `inReadOnlyTx` means a
     read-only one is.
   - `txOwner` is the `Type.method` that opened that transaction (with `@Transactional` or a
     `TransactionTemplate`), and `txOwnerAt` its `file:line`.
+  - `caughtAt` is the `file:line` of a catch on the path that swallows this write's, send's or
+    call's failure: it catches `Exception`, `Throwable` or a remote-call exception and neither
+    rethrows, answers a 4xx or 5xx, nacks, dead-letters, marks a failure nor writes or sends in
+    its clause.
 - **Signals:**
   - `async-handoff`: an executor, `@Async`, `CompletableFuture.*Async`, a new thread or an
     Akka `tell`. Its `detail` starts with `timer ` for `schedule*`, and ends in "(waited for in
@@ -134,9 +138,27 @@ What the atlas cannot see is listed by `doc not-in-atlas.md`.
     session attribute without Spring Session.
   - `local-file`.
   - `db-write`, `message-send`, `external-call` (HTTP, SOAP ports, SDK calls, object storage,
-    e-mail) and `event-publish`.
-  - `transactional`.
+    e-mail) and `event-publish`. A send whose future, `Mono` or flag is the only report of a
+    failure and is not read ends in "(result ignored)".
+  - `transactional`. A `REQUIRES_NEW` one opened while another transaction is open says
+    "inside the transaction of `Type.method`".
   - Mitigations: `retry`, `lock` (including row locks) and `idempotency-check`.
   - `self-invocation`: a proxy annotation bypassed by a call through `this`, or put on an init
     callback.
+  - `swallowed-failure`: the catch that `caughtAt` points at, with the signals it swallows.
+  - `no-timeout` and `unbounded-executor`: the bean method, field or constructor that builds
+    the HTTP client or executor a call on the path uses, when it sets no connect or read
+    timeout, or no queue or thread bound or shutdown drain. Resolved by declaration: the
+    field's own initialiser or constructor, else the module's `@Bean` methods of that type by
+    qualifier, name, or the only one.
+  - `config`: a fact of the operation's module, not of its code. Its `symbol` is the config key
+    (`server.shutdown`, `spring.jpa.open-in-view`, `spring.kafka.consumer.enable-auto-commit`,
+    `spring.jpa.hibernate.ddl-auto`, `spring.cloud.openfeign.client.config`) or the file name of
+    the newest migration that drops, renames or retypes a table the path writes. A missing key
+    points at line 1 of the module's base `application` file.
+- **Module config.** The scan reads `application*` and `bootstrap*` `.yml`, `.yaml` and
+  `.properties` files of each module's main resources (its own, else the nearest enclosing
+  module's, else all of them). A production profile's value wins over the base value; profiles
+  named like `local`, `dev`, `test` or `demo` are ignored. Only the newest migration under each
+  migration root (Flyway by version, others by path) is read for destructive statements.
 - **Not analysed.** Kotlin, Groovy and regex-fallback records have `analysed: false` and no effects.

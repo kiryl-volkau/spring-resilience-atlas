@@ -1,7 +1,9 @@
 package studio.volkoff.atlas.audit;
 
+import studio.volkoff.atlas.effects.Signals;
 import studio.volkoff.atlas.query.Query;
 import studio.volkoff.atlas.report.Places;
+import studio.volkoff.atlas.report.Risk;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -65,7 +67,9 @@ final class Packet {
     static PlaceView view(AuditContext ctx, Places.Place p) throws Exception {
         List<String> opIds = new ArrayList<>(p.ops());
         opIds.sort(null);
-        List<String> entryOps = opIds.subList(0, Math.min(MAX_ENTRY_SLICES, opIds.size()));
+        // A module's config line or migration is the whole question: the operations' code says nothing about it.
+        boolean module = Risk.MODULE_RULES.contains(p.code());
+        List<String> entryOps = module ? List.of() : opIds.subList(0, Math.min(MAX_ENTRY_SLICES, opIds.size()));
         Set<String> toLoad = new LinkedHashSet<>();
         for (Map<String, Object> e : p.reasonEffects()) {
             toLoad.add(String.valueOf(e.get("file")));
@@ -73,6 +77,10 @@ final class Packet {
         toLoad.add(p.file());
         for (String op : entryOps) {
             toLoad.add(String.valueOf(ctx.inputById.get(op).ep().get("file")));
+        }
+        List<Map<String, Object>> listeners = listeners(ctx, p);
+        for (Map<String, Object> l : listeners) {
+            toLoad.add(String.valueOf(l.get("file")));
         }
         ctx.slices.load(toLoad);
 
@@ -94,6 +102,12 @@ final class Packet {
         if (own != null && labels.add(own.label())) {
             evidence.add(own);
         }
+        for (Map<String, Object> l : listeners) {
+            Slices.Slice s = ctx.slices.enclosing(String.valueOf(l.get("file")), l.get("line") instanceof Number n ? n.intValue() : 0);
+            if (s != null && labels.add(s.label())) {
+                evidence.add(s);
+            }
+        }
         List<Slices.Slice> entries = new ArrayList<>();
         for (String op : entryOps) {
             Map<String, Object> ep = ctx.inputById.get(op).ep();
@@ -106,8 +120,10 @@ final class Packet {
         evidence.forEach(s -> sliced.add(s.file()));
         entries.forEach(s -> sliced.add(s.file()));
         Map<String, String> other = new LinkedHashMap<>();
-        stores(ctx, p, sliced, other);
-        for (String op : p.ops()) {
+        if (!module || p.code().equals("destructive-migration")) {
+            stores(ctx, p, sliced, other);
+        }
+        for (String op : module ? List.<String>of() : p.ops()) {
             Map<String, Object> row = ctx.effectRowById.get(op);
             if (row == null || !(row.get("files") instanceof List<?> files)) {
                 continue;
@@ -122,6 +138,33 @@ final class Packet {
         List<String[]> otherFiles = new ArrayList<>();
         other.forEach((f, h) -> otherFiles.add(new String[] {f, h}));
         return new PlaceView(p, evidence, entries, otherFiles, missing);
+    }
+
+    /**
+     * For a rule about an event that no transaction carries, the listeners of the published event
+     * types: the question is whether one of them waits for a commit, and they are other operations.
+     */
+    private static List<Map<String, Object>> listeners(AuditContext ctx, Places.Place p) {
+        if (!p.code().equals("after-commit-listener-without-transaction")) {
+            return List.of();
+        }
+        Set<String> types = new LinkedHashSet<>();
+        for (Map<String, Object> e : p.reasonEffects()) {
+            String d = String.valueOf(e.get("detail"));
+            int open = d.lastIndexOf('(');
+            if (open >= 0 && d.endsWith(")")) {
+                types.add(d.substring(open + 1, d.length() - 1));
+            }
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Places.Input in : ctx.inputs) {
+            Map<String, Object> ep = in.ep();
+            if ("EVENT".equals(ep.get("kind")) && java.util.Arrays.stream(String.valueOf(ep.get("target")).split(","))
+                    .anyMatch(t -> types.contains(t.strip())) && out.size() < MAX_ENTRY_SLICES) {
+                out.add(ep);
+            }
+        }
+        return out;
     }
 
     /**
@@ -284,9 +327,9 @@ final class Packet {
             cited.add(e.get("file") + ":" + e.get("line") + ":" + e.get("detail"));
         }
         List<String> others = new ArrayList<>();
-        for (String op : p.ops()) {
+        for (String op : Risk.MODULE_RULES.contains(p.code()) ? List.<String>of() : p.ops()) {
             for (Map<String, Object> e : ctx.inputById.get(op).effects()) {
-                if (cited.add(e.get("file") + ":" + e.get("line") + ":" + e.get("detail"))) {
+                if (!Signals.CONFIG.equals(e.get("signal")) && cited.add(e.get("file") + ":" + e.get("line") + ":" + e.get("detail"))) {
                     others.add(effectLine(e));
                 }
             }

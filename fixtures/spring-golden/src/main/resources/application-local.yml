@@ -1,0 +1,7 @@
+server:
+  shutdown: graceful
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop

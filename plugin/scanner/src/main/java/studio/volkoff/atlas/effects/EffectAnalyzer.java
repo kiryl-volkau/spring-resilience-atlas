@@ -128,6 +128,28 @@ public final class EffectAnalyzer {
     }
 
     /**
+     * A catch that takes every failure, or the failures of remote calls, and neither rethrows,
+     * answers an error nor hands the failure on: what its try block wrote, sent or called fails silently.
+     */
+    private static final class Guard {
+        static final Set<String> GUARDED = Set.of(Signals.DB_WRITE, Signals.MESSAGE, Signals.EXTERNAL, Signals.EVENT);
+
+        final MethodDecl.Catch c;
+        final String at;
+        final boolean broad;
+        final Set<Integer> covered = new LinkedHashSet<>();
+        final Set<String> signals = new TreeSet<>();
+        /** The clause writes or sends: it records the failure somewhere. */
+        boolean records;
+
+        Guard(MethodDecl.Catch c, String at, boolean broad) {
+            this.c = c;
+            this.at = at;
+            this.broad = broad;
+        }
+    }
+
+    /**
      * What a call's receiver is. {@code dependency} for a field or a static call; a local or a
      * parameter of a project class is usually a domain object.
      */
@@ -139,6 +161,7 @@ public final class EffectAnalyzer {
     private final Evaluator ev;
     private final java.util.function.Predicate<String> springSession;
     private final boolean springSessionAnywhere;
+    private final Construction construction;
     private final Map<MethodDecl, TxAnno> txCache = new IdentityHashMap<>();
     private final Map<MethodDecl, TxAnno> methodTxCache = new IdentityHashMap<>();
     private final Map<TypeDecl, List<TypeDecl>> implCache = new IdentityHashMap<>();
@@ -146,14 +169,17 @@ public final class EffectAnalyzer {
 
     /**
      * {@code springSession} tells, per build module, whether Spring Session is declared: HTTP
-     * session attributes are then stored externally.
+     * session attributes are then stored externally. {@code builderTimeouts} tells whether the
+     * module's application config sets the timeouts Spring Boot applies to the HTTP client builders it provides.
      */
-    public EffectAnalyzer(Index index, java.util.function.Predicate<String> springSession, boolean springSessionAnywhere) {
+    public EffectAnalyzer(Index index, java.util.function.Predicate<String> springSession, boolean springSessionAnywhere,
+                          java.util.function.Predicate<String> builderTimeouts) {
         this.index = index;
         this.springSessionAnywhere = springSessionAnywhere;
         this.an = new Annotations(index);
         this.ev = new Evaluator(index);
         this.springSession = springSession;
+        this.construction = new Construction(index, builderTimeouts);
     }
 
     public Result analyse(EntryPoint ep) {
@@ -226,6 +252,10 @@ public final class EffectAnalyzer {
         private final Set<String> files = new LinkedHashSet<>();
         /** The methods being read, innermost first. */
         private final Deque<Frame> frames = new ArrayDeque<>();
+        /** Swallowing catches whose try block is being read, innermost first. */
+        private final Deque<Guard> guards = new ArrayDeque<>();
+        /** The swallowing catch whose clause is being read, if any. */
+        private Guard clause;
         private int methods;
         private boolean truncated;
         private int unresolved;
@@ -253,15 +283,47 @@ public final class EffectAnalyzer {
             String ownerAt = owner == null ? null : owner.at();
             Integer at = seen.get(key);
             if (at == null) {
-                seen.put(key, effects.size());
-                effects.add(new Effect(signal, detail, file, line, symbol, hop, tx == Tx.READ_WRITE, tx == Tx.READ_ONLY, ownerSymbol, ownerAt));
+                at = effects.size();
+                seen.put(key, at);
+                effects.add(new Effect(signal, detail, file, line, symbol, hop, tx == Tx.READ_WRITE, tx == Tx.READ_ONLY, ownerSymbol, ownerAt, null));
+            } else {
+                Effect old = effects.get(at);
+                boolean rw = old.inTx() || tx == Tx.READ_WRITE;
+                boolean takeNew = old.txOwner() == null || !old.inTx() && tx == Tx.READ_WRITE;
+                effects.set(at, new Effect(signal, detail, file, line, old.symbol(), Math.min(old.hop(), hop), rw,
+                        !rw && (old.inReadOnlyTx() || tx == Tx.READ_ONLY), takeNew ? ownerSymbol : old.txOwner(),
+                        takeNew ? ownerAt : old.txOwnerAt(), old.caughtAt()));
+            }
+            if (!Guard.GUARDED.contains(signal)) {
                 return;
             }
-            Effect old = effects.get(at);
-            boolean rw = old.inTx() || tx == Tx.READ_WRITE;
-            boolean takeNew = old.txOwner() == null || !old.inTx() && tx == Tx.READ_WRITE;
-            effects.set(at, new Effect(signal, detail, file, line, old.symbol(), Math.min(old.hop(), hop), rw,
-                    !rw && (old.inReadOnlyTx() || tx == Tx.READ_ONLY), takeNew ? ownerSymbol : old.txOwner(), takeNew ? ownerAt : old.txOwnerAt()));
+            for (Guard g : guards) {
+                if (g.broad || signal.equals(Signals.EXTERNAL) || signal.equals(Signals.MESSAGE)) {
+                    g.covered.add(at);
+                    g.signals.add(signal);
+                }
+            }
+            if (clause != null && (signal.equals(Signals.DB_WRITE) || signal.equals(Signals.MESSAGE))) {
+                clause.records = true;
+            }
+        }
+
+        /** Marks what a swallowing catch covered, unless its clause recorded the failure, and records the catch itself. */
+        private void settle(List<Guard> own, String file, String symbol, int hop, Tx tx) {
+            for (Guard g : own) {
+                if (g.records || g.covered.isEmpty()) {
+                    continue;
+                }
+                for (int i : g.covered) {
+                    Effect e = effects.get(i);
+                    if (e.caughtAt() == null) {
+                        effects.set(i, new Effect(e.signal(), e.detail(), e.file(), e.line(), e.symbol(), e.hop(), e.inTx(),
+                                e.inReadOnlyTx(), e.txOwner(), e.txOwnerAt(), g.at));
+                    }
+                }
+                add(Signals.SWALLOWED, "catch (" + String.join(" | ", g.c.types()) + ") without rethrow around "
+                        + String.join(", ", g.signals), file, g.c.line(), symbol, hop, tx);
+            }
         }
 
         /**
@@ -271,7 +333,7 @@ public final class EffectAnalyzer {
          */
         void method(TypeDecl bean, Target t, int hop, Tx tx, boolean viaProxy, boolean shared) {
             Map<String, Integer> byContext = visits.computeIfAbsent(t.method(), k -> new HashMap<>());
-            String context = tx + "|" + viaProxy + "|" + shared;
+            String context = tx + "|" + viaProxy + "|" + shared + "|" + guards.isEmpty();
             Integer best = byContext.get(context);
             if (best != null && best <= hop) {
                 return;
@@ -308,18 +370,23 @@ public final class EffectAnalyzer {
             Frame owner = inner == Tx.NONE ? null
                     : opensHere || parent == null ? self
                     : parent.owner() != null ? parent.owner() : parent;
+            String txDetail = declared == null ? null : declared.detail();
+            if (txDetail != null && txDetail.contains("REQUIRES_NEW") && tx != Tx.NONE && parent != null) {
+                txDetail += Signals.NESTED + (parent.owner() != null ? parent.owner() : parent).symbol();
+            }
             frames.push(new Frame(self.symbol(), self.at(), owner));
             try {
-                body(bean, t, hop, inner, declared, viaProxy, shared, file, symbol);
+                body(bean, t, hop, inner, declared, txDetail, viaProxy, shared, file, symbol);
             } finally {
                 frames.pop();
             }
         }
 
-        private void body(TypeDecl bean, Target t, int hop, Tx inner, TxAnno declared, boolean viaProxy, boolean shared, String file, String symbol) {
+        private void body(TypeDecl bean, Target t, int hop, Tx inner, TxAnno declared, String txDetail, boolean viaProxy, boolean shared,
+                          String file, String symbol) {
             if (viaProxy) {
                 if (declared != null && declared.mode() == TxMode.OPENS) {
-                    add(Signals.TX, declared.detail(), file, declared.line(), symbol, hop, inner);
+                    add(Signals.TX, txDetail, file, declared.line(), symbol, hop, inner);
                 }
                 for (Anno a : t.method().annos()) {
                     switch (a.simpleName()) {
@@ -330,12 +397,39 @@ public final class EffectAnalyzer {
                 }
             }
             MethodDecl.Body body = t.method().body();
+            List<Guard> own = new ArrayList<>();
+            for (MethodDecl.Catch c : body.catches()) {
+                boolean broad = c.types().stream().anyMatch(Signals.BROAD_CATCHES::contains);
+                boolean remote = c.types().stream().anyMatch(Signals.REMOTE_CATCHES::contains);
+                if ((broad || remote) && !c.rethrows() && !c.answersError() && runsInPlace(bean, t, c.encl())
+                        && c.calls().stream().noneMatch(n -> Signals.FAILURE_HANDLING.matcher(n).matches())) {
+                    own.add(new Guard(c, file + ":" + c.line(), broad));
+                }
+            }
             for (Site s : body.sites()) {
                 if (s.encl() != null && deferralOf(bean, t, s.encl()) == Deferral.NEVER) {
                     continue;
                 }
-                site(bean, t, s, hop, siteTx(bean, t, s, inner), shared);
+                int pushed = 0;
+                Guard previous = clause;
+                for (Guard g : own) {
+                    if (s.line() >= g.c.tryFrom() && s.line() <= g.c.tryTo() && runsInPlace(bean, t, s.encl())) {
+                        guards.push(g);
+                        pushed++;
+                    } else if (s.line() >= g.c.line() && s.line() <= g.c.to()) {
+                        clause = g;
+                    }
+                }
+                try {
+                    site(bean, t, s, hop, siteTx(bean, t, s, inner), shared);
+                } finally {
+                    for (int i = 0; i < pushed; i++) {
+                        guards.pop();
+                    }
+                    clause = previous;
+                }
             }
+            settle(own, file, symbol, hop, inner);
             if (shared && !isSetup(t.method())) {
                 for (Site a : body.assignments()) {
                     boolean bare = a.receiver() == null;
@@ -349,6 +443,15 @@ public final class EffectAnalyzer {
                     }
                 }
             }
+        }
+
+        /** Code in no lambda, or in one run on the spot (a forEach, a TransactionTemplate callback): an enclosing try sees its failures. */
+        private boolean runsInPlace(TypeDecl bean, Target caller, String encl) {
+            if (encl == null) {
+                return true;
+            }
+            Deferral d = deferralOf(bean, caller, encl);
+            return d == Deferral.INLINE || d == Deferral.TRANSACTION;
         }
 
         /** Lambdas handed to executors and after-commit callbacks run outside the transaction; TransactionTemplate callbacks inside one. */
@@ -511,7 +614,19 @@ public final class EffectAnalyzer {
                 if (call.signal().equals(Signals.EVENT) && eventType != null) {
                     detail += "(" + eventType + ")";
                 }
+                boolean callback = (simple.equals("KafkaProducer") || simple.equals("Producer")) && s.args() >= 2;
+                if (call.signal().equals(Signals.MESSAGE) && s.discarded() && !callback && Signals.RESULT_SENDS.contains(simple + "." + name)) {
+                    detail += Signals.IGNORED;
+                }
                 add(call.signal(), detail, file, s.line(), symbol, hop, tx);
+                boolean pool = call.signal().equals(Signals.ASYNC) && !call.detail().startsWith(Signals.TIMER);
+                boolean http = call.signal().equals(Signals.EXTERNAL) && call.detail().startsWith("HTTP ");
+                if (r.field() && (pool || http)) {
+                    Construction.Built built = construction.problem(r.context(), s.receiver(), r.typeText());
+                    if (built != null) {
+                        add(pool ? Signals.UNBOUNDED_POOL : Signals.NO_TIMEOUT, built.problem(), built.file(), built.line(), built.symbol(), hop, Tx.NONE);
+                    }
+                }
                 return;
             }
             if (s.chained() && (r.typeText().startsWith("WebClient") || r.typeText().startsWith("RestClient")) && Signals.HTTP_VERBS.contains(name)) {

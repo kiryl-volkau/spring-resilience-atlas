@@ -190,3 +190,13 @@ HTTP	POST	/api/dailycare/notes/{noteId}/attachments	CareNoteController.attach	IN
 HTTP	GET	/api/dailycare/activities/{residentId}	ActivityLogController.listActivities	INFERRED
 MESSAGING	KAFKA	care.dailycare.activities	ActivityEventListener.onActivityRecorded	INFERRED
 HTTP	POST	/api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	STATIC
+EVENT	TRANSACTIONAL_EVENT_LISTENER	InvoiceIssuedEvent	LedgerPostingListener.onInvoiceIssued	STATIC
+EVENT	TRANSACTIONAL_EVENT_LISTENER	LedgerDayClosedEvent	LedgerCloseJob.onDayClosed	STATIC
+HTTP	POST	/api/billing/ledger/webhooks/bank-transfer	LedgerController.receiveBankTransfer	STATIC
+HTTP	POST	/api/billing/ledger/{invoiceId}/adjustments	LedgerController.adjust	STATIC
+HTTP	POST	/api/billing/ledger/{invoiceId}/statement	LedgerController.issueStatement	STATIC
+JOB	QUARTZ	LedgerReconciliationJob	LedgerReconciliationJob.execute	INFERRED
+LIFECYCLE	APPLICATION_RUNNER	LedgerWarmup	LedgerWarmup.run	STATIC
+LIFECYCLE	PRE_DESTROY	LedgerBuffer	LedgerBuffer.flush	STATIC
+MESSAGING	KAFKA	care.billing.ledger-postings	LedgerSyncConsumer.onPostingRequested	STATIC
+SCHEDULED	CRON	0 0 1 * * *	LedgerCloseJob.closeDay	STATIC

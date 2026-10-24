@@ -152,6 +152,14 @@ A **code hint** (High, Medium, Low, No pattern, Not analysed) comes from rules i
 thread after the caller was answered, a message sent before the commit, or a job without a lock.
 A hint says where to look first; it is not a verdict.
 
+The 46 rules cover hand-offs to memory, dual writes and transaction boundaries, idempotency,
+failures that a catch swallows or a send result hides, HTTP clients without timeouts and
+unbounded executors, after-commit listeners, startup and shutdown hooks, and jobs. Six of them
+read the module rather than the call path: graceful shutdown, Open Session in View, Kafka
+auto-commit and `ddl-auto` in the `application` config, Feign timeouts, and a newest migration
+that drops or renames what the code writes. Their place is the config key or the migration file;
+it lists every operation the fact reaches without raising their levels.
+
 **Statuses** (Broken, Smells, OK, Not audited) are a separate vocabulary. They come only from
 audit verdicts and findings in `.reliability/audit/`, and the generator computes every colour
 from those records. The skill costs about $0.01 on Haiku.
@@ -164,7 +172,8 @@ is a funnel:
 1. **Hints, no model.** The scan and `Risk.java` flag operations, as above.
 2. **Places, no model.** Operations that share the code a fix would change are grouped into one
    place: a rule code at the method enclosing its evidence, or, for a rule about a transaction,
-   at the method that opens the transaction, since that boundary is what a fix moves. A large
+   at the method that opens the transaction, since that boundary is what a fix moves. A rule
+   about the module's config sits at the config key, one about a migration at its file. A large
    application has far fewer places than operations.
 3. **Quick check, cheap model.** The scanner writes an evidence packet per batch of up to eight
    places: the rule's hypothesis, its named mitigations, the effects it cited and the methods

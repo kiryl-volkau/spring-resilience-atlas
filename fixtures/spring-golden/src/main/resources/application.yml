@@ -6,6 +6,8 @@ spring:
     username: care
   jpa:
     open-in-view: false
+    hibernate:
+      ddl-auto: update
   cloud:
     function:
       definition: enrichContact;leadToContact;crmHeartbeat
@@ -14,6 +16,8 @@ spring:
         static: eu-west-2
   kafka:
     bootstrap-servers: localhost:9092
+    consumer:
+      enable-auto-commit: true
 
 care:
   billing:

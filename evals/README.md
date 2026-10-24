@@ -19,7 +19,8 @@ It scans `fixtures/spring-golden` and compares the result with the hand-written 
 - `not-entrypoints.txt`, symbols that must not appear;
 - `signals.tsv`, effects that must or must not be found on an operation's path, with `@tx`
   for "inside a transaction";
-- `risk.tsv`, the static attention level and the rule codes that must or must not fire.
+- `risk.tsv`, the static attention level and the rule codes that must or must not fire,
+  module rules from the fixture's `application.yml` and migrations included.
 
 The command exits 1 on any difference. Each difference is either a scanner bug or a wrong expectation; decide
 which against `plugin/schemas/entrypoint-rules.md`.
@@ -106,6 +107,14 @@ The quick check on the golden fixture, 2026-10-23, `claude -p` with `--plugin-di
 |---|---|---|---|
 | `audit`, plan only (16 places, 3 batches; estimate $0.04 + $0.01 for the skill's turns) | Haiku 5.5 | 0.007 | 2 |
 | `audit --yes <id>`, 3 `place-checker` agents, 16 places judged, 0 unjudged, every verdict as `verdicts-expected.tsv` says | Haiku 5.5 | 0.044 | 10 |
+
+After the 20 rules of 2026-10-24, the same fixture:
+
+| Run | Model | USD | Turns |
+|---|---|---|---|
+| `audit`, plan only (40 places, 5 batches; estimate $0.09 + $0.01) | Haiku 5.5 | 0.008 | 2 |
+| `audit --yes <id>`, 5 agents, 40 places judged, 0 unjudged; 28 of the 29 verdicts in `verdicts-expected.tsv` matched, and the UNCERTAIN one came from a packet that did not show the event's listener | Haiku 5.5 | 0.102 | 15 |
+| the same place re-checked after the packet printed the listener: CONFIRMED | Haiku 5.5 | 0.020 | — |
 
 The skill starts its agents in the foreground. A run whose agents went to the background ended
 the skill's turn: the session's default model (Opus) took over, cost ten times as much and was

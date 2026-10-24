@@ -64,11 +64,14 @@ final class AuditContext {
         return new AuditContext(repo, atlasDir);
     }
 
-    /** The in-scope place ids an operation reaches, in reason order. */
+    /**
+     * The in-scope place ids on an operation's own path, in reason order. Places of a module's
+     * config or migrations are left out: one module fact does not colour each of its operations.
+     */
     List<String> placeIdsOf(String opId) {
         List<String> out = new ArrayList<>();
         for (String id : places.placeIdsByOp().getOrDefault(opId, List.of())) {
-            if (placeById.containsKey(id)) {
+            if (placeById.containsKey(id) && !studio.volkoff.atlas.report.Risk.MODULE_RULES.contains(placeById.get(id).code())) {
                 out.add(id);
             }
         }

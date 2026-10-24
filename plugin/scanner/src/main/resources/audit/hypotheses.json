@@ -63,7 +63,7 @@
     "dual-write": {
       "inScope": true,
       "hypothesis": "The database write and the message send are separate steps; a crash between them keeps one and loses the other.",
-      "check": "In which order do the write and the send happen? Who notices a lost message or a lost row? Is there a reconciliation?",
+      "check": "Which comes first, the write or the send? Write first: a crash loses the message; send first: consumers hear about a row that is never written. Who notices either? Is there a reconciliation?",
       "mitigations": [
         {"name": "transactional outbox", "kind": "refutes", "text": "the message is written to an outbox table with the data and relayed later"},
         {"name": "change data capture", "kind": "refutes", "text": "messages are produced from the database log, not by this code"},
@@ -78,13 +78,14 @@
     },
     "remote-in-tx": {
       "inScope": true,
-      "hypothesis": "A remote call happens while a database transaction is open; a rollback afterwards cannot undo what the remote side did, and a slow provider holds connections.",
+      "hypothesis": "A remote call happens while a database transaction is open; a rollback afterwards cannot undo what the remote side did, and a slow provider holds connections. For a read, the cost is the held connection, not consistency.",
       "check": "Is the call a read or an operation with effects? Is the transaction really open at the call? Is the remote effect reversed when the transaction rolls back?",
       "mitigations": [
         {"name": "call outside transaction", "kind": "refutes", "text": "the call actually runs outside the transaction (another proxy, REQUIRES_NEW ended, or no @Transactional on this path)"},
         {"name": "read-only call with timeout", "kind": "refutes", "text": "the call only reads and has a short timeout"},
         {"name": "compensation that reverses", "kind": "mitigates", "text": "a rollback triggers a compensation that undoes the remote effect, not one that only logs"},
-        {"name": "persisted intent", "kind": "mitigates", "text": "the intent is persisted before the call and a later step reconciles it"}
+        {"name": "persisted intent", "kind": "mitigates", "text": "the intent is persisted before the call and a later step reconciles it"},
+        {"name": "remote call last and idempotent", "kind": "mitigates", "text": "the call is the last step before the commit and is idempotent, so a retry after a failed commit heals the gap"}
       ],
       "cite": "the remote call; the transaction boundary; the rollback handling",
       "fix": "Move the remote call out of the transaction (before it, or after the commit with persisted intent), or add a compensation that really reverses it.",
@@ -99,7 +100,8 @@
         {"name": "durable copy", "kind": "refutes", "text": "the same fact is written to a durable store in the same method, or restored at startup"},
         {"name": "cache with loader", "kind": "refutes", "text": "the collection is a cache with an expiry and a loader from a durable store"},
         {"name": "restored on startup", "kind": "mitigates", "text": "the state is rebuilt at startup, but changes since the last write are lost"},
-        {"name": "single replica stated", "kind": "mitigates", "text": "the code states the application runs as one instance (recorded as an assumption)"}
+        {"name": "single replica stated", "kind": "mitigates", "text": "the code states the application runs as one instance (recorded as an assumption)"},
+        {"name": "connection registry with a relay", "kind": "refutes", "text": "the collection holds live connections (WebSocket sessions, emitters) and messages reach the replica holding them through a broker relay or pub/sub"}
       ],
       "cite": "the write to the collection; the durable write or its absence",
       "fix": "Keep the state in the database or a shared store, and use memory only as a cache in front of it.",
@@ -113,7 +115,8 @@
       "mitigations": [
         {"name": "assigned once", "kind": "refutes", "text": "the field is assigned once from configuration or at startup"},
         {"name": "request or session scope", "kind": "refutes", "text": "the bean is request-, session- or prototype-scoped"},
-        {"name": "synchronized local use", "kind": "mitigates", "text": "writes and reads are synchronized and the value is only used within the same call"}
+        {"name": "synchronized local use", "kind": "mitigates", "text": "writes and reads are synchronized and the value is only used within the same call"},
+        {"name": "refreshed snapshot", "kind": "refutes", "text": "the field holds a derived value that a scheduler or cache refreshes as a whole (a volatile snapshot of configuration, rates or a token)"}
       ],
       "cite": "the field write; the bean's scope declaration",
       "fix": "Keep per-request data in local variables or method parameters, not in fields of a singleton.",
@@ -127,7 +130,8 @@
       "mitigations": [
         {"name": "spring session", "kind": "refutes", "text": "Spring Session stores the session in a shared store for this module"},
         {"name": "cache of durable value", "kind": "refutes", "text": "the attribute only caches a value that is also stored durably"},
-        {"name": "missing state handled", "kind": "mitigates", "text": "the code handles a missing attribute safely by asking the user again"}
+        {"name": "missing state handled", "kind": "mitigates", "text": "the code handles a missing attribute safely by asking the user again"},
+        {"name": "sticky sessions", "kind": "mitigates", "text": "the load balancer keeps each user on one replica (recorded as an assumption); a restart still loses the session"}
       ],
       "cite": "the session write; the read that depends on it",
       "fix": "Store the session in a shared store (Spring Session) or keep the state on the client or in the database.",
@@ -141,7 +145,8 @@
       "mitigations": [
         {"name": "temp file deleted", "kind": "refutes", "text": "the file is temporary and deleted in a finally block of the same flow"},
         {"name": "uploaded in same flow", "kind": "refutes", "text": "the file is uploaded to shared storage within the same flow before it is needed again"},
-        {"name": "shared volume", "kind": "mitigates", "text": "the path is configured as a shared, mounted volume (recorded as an assumption)"}
+        {"name": "shared volume", "kind": "mitigates", "text": "the path is configured as a shared, mounted volume (recorded as an assumption)"},
+        {"name": "rebuildable cache", "kind": "refutes", "text": "the file is a cache rebuilt on a miss (templates, compiled reports, fonts)"}
       ],
       "cite": "the file write; the read or delete",
       "fix": "Write to shared object storage, or delete the local file before the flow ends.",
@@ -151,12 +156,14 @@
     "consumer-not-idempotent": {
       "inScope": true,
       "hypothesis": "Brokers deliver at least once and nothing checks whether a message was already processed; a redelivery repeats the write, send or call.",
-      "check": "Can a message be identified (an id or business key)? Is processing keyed on it? What exactly is duplicated on redelivery?",
+      "check": "Can a message be identified (an id or business key)? Is there a unique constraint, a conditional write or a lookup on it before the first side effect? Using the id is not checking it. What exactly is duplicated on redelivery?",
       "mitigations": [
         {"name": "unique business key", "kind": "refutes", "text": "a unique constraint on a business key with conflict handling stops the duplicate"},
         {"name": "processed-message table", "kind": "refutes", "text": "a processed-message record is checked before the work"},
         {"name": "conditional update", "kind": "refutes", "text": "the write is a conditional update or upsert that is a no-op the second time"},
-        {"name": "fifo deduplication", "kind": "mitigates", "text": "the queue deduplicates by id for a short window (SQS FIFO, 5 minutes)"}
+        {"name": "fifo deduplication", "kind": "mitigates", "text": "the queue deduplicates by id for a short window (SQS FIFO, 5 minutes)"},
+        {"name": "message id as primary key", "kind": "refutes", "text": "the row written is keyed by the message id or the payload's business id, so a redelivered insert fails or upserts"},
+        {"name": "transactional consume and produce", "kind": "mitigates", "text": "a Kafka transaction or a transacted JMS session commits the acknowledgement with the work, which removes duplicates from crashes but not from producer retries"}
       ],
       "cite": "the listener entry; the first side effect; the check or its absence",
       "fix": "Record the message id (or business key) with a unique constraint in the same transaction as the work, and skip duplicates.",
@@ -182,7 +189,8 @@
       "hypothesis": "The webhook calls another service before answering; a slow dependency makes the provider time out and retry while the first attempt still runs.",
       "check": "How long can the remote call take? Does the provider retry while the first attempt runs, and is the handler idempotent?",
       "mitigations": [
-        {"name": "short timeout and idempotent handler", "kind": "refutes", "text": "the remote call has a short timeout and the handler is idempotent on the event id"}
+        {"name": "short timeout and idempotent handler", "kind": "refutes", "text": "the remote call has a short timeout and the handler is idempotent on the event id"},
+        {"name": "fetch back by event id", "kind": "mitigates", "text": "the remote call fetches the event back from the provider by id with a short timeout, the verification the provider recommends"}
       ],
       "cite": "the remote call; its timeout configuration or absence",
       "fix": "Acknowledge after persisting the event, and make the remote call from a durable, retried step.",
@@ -192,11 +200,13 @@
     "job-without-lock": {
       "inScope": true,
       "hypothesis": "A scheduled job runs on every instance; with more than one replica it repeats its writes and sends.",
-      "check": "With two replicas, what is duplicated? Are the steps row-locked or idempotent?",
+      "check": "With two replicas, what is duplicated? Are the steps row-locked or idempotent? Selecting rows by status is not a claim: it needs FOR UPDATE SKIP LOCKED or a conditional update whose row count is checked.",
       "mitigations": [
         {"name": "distributed lock", "kind": "refutes", "text": "ShedLock, a Quartz JDBC store or leader election guards the job, through code the scanner missed"},
         {"name": "row claim or upsert", "kind": "refutes", "text": "every write claims rows (SELECT ... FOR UPDATE SKIP LOCKED) or is an upsert"},
-        {"name": "idempotent by comment", "kind": "mitigates", "text": "comments state the steps are idempotent, without code that enforces it"}
+        {"name": "idempotent by comment", "kind": "mitigates", "text": "comments state the steps are idempotent, without code that enforces it"},
+        {"name": "one scheduling deployment", "kind": "mitigates", "text": "a profile or property enables the job in one deployment only (@Profile, @ConditionalOnProperty, spring.task.scheduling.enabled), recorded as an assumption about the replica count"},
+        {"name": "clustered Quartz", "kind": "refutes", "text": "the job is a Quartz job with @DisallowConcurrentExecution on a clustered JDBC job store"}
       ],
       "cite": "the @Scheduled method; the first write or send; the lock or its absence",
       "fix": "Guard the job with ShedLock or a database lock, or make each step claim its rows.",
@@ -209,7 +219,8 @@
       "check": "Which annotation is bypassed? Does it matter here (@Async always; @Transactional only when the target writes or sends)?",
       "mitigations": [
         {"name": "self-injected proxy", "kind": "refutes", "text": "the call goes through a self-injected proxy or AopContext.currentProxy()"},
-        {"name": "caller transactional", "kind": "mitigates", "text": "the caller is itself transactional, so the work still runs in a transaction"}
+        {"name": "caller transactional", "kind": "mitigates", "text": "the caller is itself transactional, so the work still runs in a transaction"},
+        {"name": "AspectJ mode", "kind": "refutes", "text": "transactions or async run in AspectJ mode (mode = AdviceMode.ASPECTJ), which also intercepts calls through this"}
       ],
       "cite": "the self-call; the annotation on the target",
       "fix": "Move the annotated method to another bean, or call it through the proxy.",
@@ -271,7 +282,7 @@
     "notification-handoff": {
       "inScope": true,
       "hypothesis": "A message to users (e-mail, SMS, chat) is sent on another thread after the work returns; a restart loses the ones still queued.",
-      "check": "Must the user get this notification, or is it best effort? Is it recorded durably before the hand-off? Does anything resend a lost one?",
+      "check": "Must the user get this notification, or is it best effort? If the forked work also writes business rows or moves money, it is business work, not a notification. Is it recorded durably before the hand-off? Does anything resend a lost one?",
       "mitigations": [
         {"name": "persisted notification", "kind": "refutes", "text": "the notification is stored (an outbox row or a queue message) before the hand-off, and a job or consumer sends it"},
         {"name": "send awaited", "kind": "refutes", "text": "the future of the send is joined or awaited before the work returns"},
@@ -340,7 +351,7 @@
     },
     "event-in-tx": {
       "inScope": true,
-      "hypothesis": "An in-process event is published inside a transaction; plain @EventListener methods run before the commit and may act on data that then rolls back.",
+      "hypothesis": "An in-process event is published inside a transaction; plain @EventListener methods run before the commit and may act on data that then rolls back. It is worst when a listener sends, calls out or notifies.",
       "check": "Which listeners handle the event? Do they act outside the transaction (send, call, notify, another data source)? Do they run before the commit?",
       "mitigations": [
         {"name": "after-commit listeners", "kind": "refutes", "text": "every listener of the event is a @TransactionalEventListener after commit, or registers its work after the commit"},
@@ -363,6 +374,284 @@
       "cite": "the HTTP verb; the write or send",
       "fix": "Move the change to a POST, PUT or PATCH, or make it idempotent.",
       "verify": "Call the GET twice; the state must not change the second time.",
+      "declares": []
+    },
+    "after-commit-listener-writes-db": {
+      "inScope": true,
+      "hypothesis": "An after-commit listener writes to the database without a new transaction; the write joins the committed transaction still bound to the thread, so it is never flushed or committed and is silently lost.",
+      "check": "Is the listener synchronous (no @Async)? Does the writing method run in REQUIRES_NEW through a proxy? Is the write a JPA change, which waits for a flush that never comes?",
+      "mitigations": [
+        {"name": "REQUIRES_NEW", "kind": "refutes", "text": "the writing method runs in @Transactional(propagation = REQUIRES_NEW) through a proxy, or a TransactionTemplate set to REQUIRES_NEW"},
+        {"name": "runs on another thread", "kind": "refutes", "text": "the listener is @Async or an @ApplicationModuleListener, so no committed transaction is bound to its thread"},
+        {"name": "auto-commit JDBC", "kind": "mitigates", "text": "the write is a plain JDBC statement on a connection that commits it by itself"}
+      ],
+      "cite": "the listener annotation and its phase; the write; the transaction declaration of the writing method, or its absence",
+      "fix": "Run the listener's writes in a REQUIRES_NEW transaction, or make the listener asynchronous and its work durable.",
+      "verify": "Publish the event and commit, then read the listener's row from another connection; it must exist.",
+      "declares": ["spring-modulith"]
+    },
+    "after-commit-listener-without-transaction": {
+      "inScope": true,
+      "hypothesis": "The event is published outside any transaction and a listener of it is a @TransactionalEventListener without fallbackExecution; Spring skips that listener silently, so its work never happens.",
+      "check": "Is a transaction open where the event is published, perhaps through a caller or a TransactionTemplate the path shows? Does every after-commit listener of the event set fallbackExecution?",
+      "mitigations": [
+        {"name": "fallbackExecution", "kind": "refutes", "text": "the listener declares fallbackExecution = true"},
+        {"name": "published inside a transaction", "kind": "refutes", "text": "the publish runs inside a transaction after all: a TransactionTemplate callback or a transactional caller on this path"}
+      ],
+      "cite": "the publish and the transaction state around it; the listener annotation",
+      "fix": "Publish the event inside the transaction that makes the change, or set fallbackExecution = true when no transaction is intended.",
+      "verify": "Call the operation and check that the listener's work happened.",
+      "declares": []
+    },
+    "read-only-tx-writes": {
+      "inScope": true,
+      "hypothesis": "A write runs inside a read-only transaction; Hibernate does not flush changed entities there and a read-only connection rejects the statement, so the change is lost or the call fails.",
+      "check": "Is the transaction at the write really readOnly (on the method or its class)? Is the write a JPA entity change, a save of a new entity, or a native statement? Does a read-write transaction open in between?",
+      "mitigations": [
+        {"name": "read-write transaction inside", "kind": "refutes", "text": "a method between the read-only boundary and the write opens its own read-write transaction (REQUIRES_NEW through a proxy)"},
+        {"name": "misnamed read", "kind": "refutes", "text": "the repository method only reads despite its name"},
+        {"name": "native statement", "kind": "mitigates", "text": "the write is a @Modifying query or JDBC statement, which runs regardless of the flush mode unless the connection is read-only"}
+      ],
+      "cite": "the write line; the @Transactional(readOnly = true) that encloses it",
+      "fix": "Give the writing method its own read-write @Transactional, or drop readOnly from the boundary.",
+      "verify": "Run the operation and read the row from another connection; the change must be there.",
+      "declares": []
+    },
+    "lock-held-across-remote-call": {
+      "inScope": true,
+      "hypothesis": "The transaction locks rows and then waits for a remote service; every other writer of those rows waits as long as the provider does, and a hung provider turns into lock timeouts across the system.",
+      "check": "Which row lock is held at the remote call? Is the lock still held there (same transaction)? Does the call have a short timeout? Is the lock meant to serialise calls per row?",
+      "mitigations": [
+        {"name": "call after the lock is released", "kind": "refutes", "text": "the remote call runs after the locking transaction committed, in another transaction or after commit"},
+        {"name": "intended per-row guard with timeout", "kind": "mitigates", "text": "the lock deliberately serialises calls for one row and the call has a timeout of a few seconds"}
+      ],
+      "cite": "the locking query; the remote call; the transaction boundary that spans both",
+      "fix": "Persist the intent under the lock, commit, then call the provider from a retried step; at least bound the call with a short timeout.",
+      "verify": "Make the provider slow; operations on the same rows must not wait for it.",
+      "declares": []
+    },
+    "flush-on-shutdown": {
+      "inScope": true,
+      "hypothesis": "Shutdown code writes, sends or calls out; on a kill, an out-of-memory crash or an expired grace period it never runs, so whatever it was meant to save is lost.",
+      "check": "What does the hook write or send? Was the same data already stored when it was produced? What is lost if the hook does not run?",
+      "mitigations": [
+        {"name": "housekeeping only", "kind": "refutes", "text": "the hook only closes clients, deregisters or logs; no business data depends on it"},
+        {"name": "persisted when produced", "kind": "refutes", "text": "the data is already stored durably when produced, and the hook only speeds up a flush"},
+        {"name": "short periodic flush", "kind": "mitigates", "text": "a scheduled flush runs every few seconds, so only the last interval is at risk"}
+      ],
+      "cite": "the shutdown hook; the write or send in it; where the data was produced and whether it was stored then",
+      "fix": "Persist the data when it is produced and treat the shutdown hook as an optimisation.",
+      "verify": "Kill the JVM with SIGKILL during activity; nothing that matters to the business may be lost.",
+      "declares": []
+    },
+    "startup-remote-call": {
+      "inScope": true,
+      "hypothesis": "Startup calls a remote service and waits for it; when the dependency is down at deploy time the application fails or hangs before it is ready, so a partner outage blocks every deploy and restart.",
+      "check": "What happens when the call fails or hangs: does startup fail, wait or carry on? Does the call have a timeout? Is the result needed before serving traffic?",
+      "mitigations": [
+        {"name": "fails open", "kind": "refutes", "text": "a failure is caught and the application starts with defaults or retries later"},
+        {"name": "runs after readiness on a thread", "kind": "refutes", "text": "the call runs on a background thread after the application is ready"},
+        {"name": "bounded retry with timeout", "kind": "mitigates", "text": "the call has a short timeout and a capped retry, after which startup carries on"}
+      ],
+      "cite": "the startup hook; the remote call; its timeout and error handling",
+      "fix": "Make startup independent of the dependency: load lazily on first use, or warm up after readiness with retries.",
+      "verify": "Start the application with the dependency unreachable; it must become ready.",
+      "declares": []
+    },
+    "quartz-concurrent-execution": {
+      "inScope": true,
+      "hypothesis": "A Quartz job that writes or sends has no @DisallowConcurrentExecution; a run that outlasts its interval, or a misfire, overlaps the previous one and repeats its effects.",
+      "check": "Can a run outlast the trigger interval? What does an overlapping run duplicate? Does each run claim its rows?",
+      "mitigations": [
+        {"name": "row claims", "kind": "refutes", "text": "every write claims rows (FOR UPDATE SKIP LOCKED, or a conditional update whose row count is checked)"},
+        {"name": "idempotent steps", "kind": "refutes", "text": "every step is an upsert or a conditional update, so a second run changes nothing"},
+        {"name": "interval far longer than runs", "kind": "mitigates", "text": "the trigger interval is far longer than any run (recorded as an assumption)"}
+      ],
+      "cite": "the Job class and its annotations; the first write or send",
+      "fix": "Annotate the job with @DisallowConcurrentExecution, and @PersistJobDataAfterExecution when it keeps progress in the JobDataMap.",
+      "verify": "Make one run slower than the trigger interval; only one execution may be active.",
+      "declares": ["quartz"]
+    },
+    "consumer-swallows-failure": {
+      "inScope": true,
+      "hypothesis": "A catch on the consumer's path takes the exception, logs it and returns; the message is acknowledged and never redelivered, so the failed work is gone with only a log line left.",
+      "check": "What does the catch enclose? What does it do besides logging: rethrow, nack, change visibility, write a failure row, send to a dead-letter destination? Is the swallowed work business work?",
+      "mitigations": [
+        {"name": "rethrown", "kind": "refutes", "text": "the catch rethrows, possibly wrapped, so the container retries or dead-letters the message"},
+        {"name": "negative acknowledgement", "kind": "refutes", "text": "the catch nacks, rejects or changes the message visibility"},
+        {"name": "failure persisted", "kind": "refutes", "text": "the catch stores the message in a failed-messages table or sends it to a dead-letter destination"},
+        {"name": "best-effort side call", "kind": "mitigates", "text": "the swallowed call is a side effect the code calls best effort, and the main work fails normally"}
+      ],
+      "cite": "the try and catch lines; what the catch does; the work inside the try",
+      "fix": "Let the exception reach the container's error handler with retries and a dead-letter destination, or persist the failure before acknowledging.",
+      "verify": "Make the processing throw; the message must be redelivered or land in the dead-letter destination.",
+      "declares": ["spring-kafka", "sqs", "spring-rabbit", "spring-amqp", "spring-jms"]
+    },
+    "http-client-without-timeout": {
+      "inScope": true,
+      "hypothesis": "The HTTP client used on this path has no connect or read timeout; a partner that accepts the connection and never answers pins the calling thread, its transaction and its listener forever.",
+      "check": "How is the client built? Are connect and read or response timeouts set on it, on its request factory or connector, or by spring.http.client properties? Does a time limiter bound the call?",
+      "mitigations": [
+        {"name": "timeouts on the factory", "kind": "refutes", "text": "a request factory, HttpClient or connector with connect and read timeouts is given to the client"},
+        {"name": "client settings in config", "kind": "refutes", "text": "spring.http.client connect and read timeouts, or a client settings bean, apply to this client"},
+        {"name": "time limiter", "kind": "mitigates", "text": "a time limiter or a future timeout bounds every use of the client"}
+      ],
+      "cite": "the client construction; the timeout or factory calls, or their absence; one call through the client",
+      "fix": "Build the client from a request factory with explicit connect and read timeouts of seconds, and share it.",
+      "verify": "Point the client at a server that accepts and never answers; the call must fail within the timeout.",
+      "declares": []
+    },
+    "remote-failure-swallowed": {
+      "inScope": true,
+      "hypothesis": "A remote call or a message send is wrapped in a catch that only logs; the operation succeeds anyway, the side effect never happens and nothing retries or records it.",
+      "check": "What does the catch do besides logging? Is the failed effect recorded as pending or failed anywhere? Does a job or a reconciliation redo it? Is the effect required, or best effort?",
+      "mitigations": [
+        {"name": "failure recorded for retry", "kind": "refutes", "text": "the catch writes a pending or failed status, an outbox row or a dead-letter message that a job retries"},
+        {"name": "rethrown after cleanup", "kind": "refutes", "text": "the catch rethrows after compensating"},
+        {"name": "still pending for the next run", "kind": "refutes", "text": "the failed item stays pending, such as an outbox row left unsent, and the next run of the job retries it"},
+        {"name": "best-effort by owner", "kind": "mitigates", "text": "the code states the effect is best effort, such as a metric push"},
+        {"name": "reconciliation", "kind": "mitigates", "text": "a scheduled job compares the two systems and repairs what is missing"}
+      ],
+      "cite": "the try and catch; the remote call or send inside; what the catch writes or sends",
+      "fix": "Persist the intent before the call and let a retried step perform it, or fail the operation when the effect is required.",
+      "verify": "Make the dependency fail; the effect must happen later, or the operation must report the failure.",
+      "declares": []
+    },
+    "send-result-ignored": {
+      "inScope": true,
+      "hypothesis": "The send returns a future, a Mono or a flag that nothing reads; a rejected or timed-out message is at most logged while the caller reports success, so the message is lost without an error.",
+      "check": "Is the result joined, chained with a callback or checked anywhere? Has the caller already committed or answered when the send fails? For a Mono, is it subscribed at all?",
+      "mitigations": [
+        {"name": "result handled", "kind": "refutes", "text": "the future is joined before returning, or a callback records the failure durably"},
+        {"name": "outbox relay", "kind": "refutes", "text": "the send belongs to an outbox relay that marks the row sent only after the future completes"},
+        {"name": "producer listener", "kind": "mitigates", "text": "a producer listener or an error channel logs and counts failed sends without recovering them"}
+      ],
+      "cite": "the send line; the result that nothing reads; the caller's commit or answer",
+      "fix": "Wait for the send before committing or answering, or send from an outbox relay that marks rows sent on success.",
+      "verify": "Make the broker reject the send; the caller must fail, or the message must stay pending for a retry.",
+      "declares": ["spring-kafka", "spring-cloud-stream", "sqs"]
+    },
+    "executor-unbounded-queue": {
+      "inScope": true,
+      "hypothesis": "The executor that takes this work has an unbounded queue or unbounded threads, or drops its queue on shutdown; a burst fills the heap until the replica is killed with every queued task, and a deploy loses what is queued.",
+      "check": "How is the executor built: queue capacity, thread limit, rejection policy, wait for tasks on shutdown? Is it the executor the hand-off on this path uses?",
+      "mitigations": [
+        {"name": "bounded queue with policy", "kind": "refutes", "text": "the queue has a capacity and a rejection policy that pushes back on the caller or persists the work"},
+        {"name": "another executor", "kind": "refutes", "text": "the hand-off on this path uses a different, bounded executor than the one flagged"},
+        {"name": "low task volume", "kind": "mitigates", "text": "the executor receives a few tasks per minute from one job"}
+      ],
+      "cite": "the executor construction; the queue capacity and shutdown settings, or their absence; the hand-off that uses it",
+      "fix": "Bound the queue and threads, choose a rejection policy that pushes back, wait for tasks on shutdown, and persist work that must not be lost.",
+      "verify": "Submit tasks faster than they complete; memory must stay bounded and callers must feel back-pressure.",
+      "declares": []
+    },
+    "nested-requires-new-in-tx": {
+      "inScope": true,
+      "hypothesis": "A REQUIRES_NEW method is called while another transaction holds a connection; each such thread needs two pooled connections at once, which deadlocks the pool under load, and the inner commit survives an outer rollback.",
+      "check": "Is the outer transaction open at the call? Must the inner work survive an outer rollback (an audit row), or is it business data that should roll back too? Can the inner step run after the outer commit instead?",
+      "mitigations": [
+        {"name": "outer transaction already ended", "kind": "refutes", "text": "the inner method runs after the outer commit (an after-commit hook, another thread)"},
+        {"name": "intended audit row with a sized pool", "kind": "mitigates", "text": "the inner transaction writes an audit or log row that must survive a rollback, and the pool is sized for two connections per thread"}
+      ],
+      "cite": "the REQUIRES_NEW declaration; the outer @Transactional; the call between them",
+      "fix": "Run the inner step after the outer commit, or let it join the outer transaction; if it must stay, size the pool for two connections per thread.",
+      "verify": "Run as many concurrent calls as the pool has connections; none may time out waiting for a connection.",
+      "declares": []
+    },
+    "request-answers-ok-on-failure": {
+      "inScope": true,
+      "hypothesis": "The handler catches the failure and returns normally, so the caller gets a success status; a client or webhook provider that would retry an error never does, and work done before the failure stays half finished.",
+      "check": "What status and body go back on the catch path? Was the request stored durably before the failing step? Does the only client read an error code from the body?",
+      "mitigations": [
+        {"name": "request persisted before the answer", "kind": "refutes", "text": "the request was stored durably before the failing step, so success is the right answer and a job finishes the work"},
+        {"name": "error status set elsewhere", "kind": "refutes", "text": "the error status is set by an exception handler or a response object the catch fills"},
+        {"name": "error code checked by client", "kind": "mitigates", "text": "the success body carries an error code that the only client handles"}
+      ],
+      "cite": "the catch; the status or body it returns; the work before the failing step",
+      "fix": "Answer an error status so the client retries, or store the request before answering success and finish it from a retried step.",
+      "verify": "Make the work throw; the client must get an error status, or the work must complete later.",
+      "declares": []
+    },
+    "graceful-shutdown-off": {
+      "inScope": true,
+      "hypothesis": "The web server is not shut down gracefully; on every deploy, scale-in or node drain it stops at once, so requests in flight are cut half done and clients see errors they may retry.",
+      "check": "Is server.shutdown set to graceful in any production config the packet names, or does the Spring Boot version shut down gracefully by default (3.4 and later)? Is the application deployed as a WAR on an external server, where this key does not apply?",
+      "mitigations": [
+        {"name": "graceful in another file", "kind": "refutes", "text": "a production profile file or an environment-specific config sets server.shutdown=graceful"},
+        {"name": "Boot default", "kind": "refutes", "text": "the project runs Spring Boot 3.4 or later, where graceful shutdown is the default"},
+        {"name": "external server", "kind": "refutes", "text": "the application is deployed as a WAR, so the external server's shutdown applies"},
+        {"name": "drain before stop", "kind": "mitigates", "text": "the deployment removes the instance from the load balancer and waits before stopping it (a preStop sleep), recorded as an assumption"}
+      ],
+      "cite": "the config line, or the config file and Spring Boot version that show the key is missing",
+      "fix": "Set server.shutdown=graceful and spring.lifecycle.timeout-per-shutdown-phase above the longest request, and give the pod a matching termination grace period.",
+      "verify": "Send SIGTERM during a slow request; it must complete and new requests must be refused.",
+      "declares": []
+    },
+    "open-in-view-enabled": {
+      "inScope": true,
+      "hypothesis": "Open Session in View is on, so each web request keeps its persistence context and its database connection until the response is written; a remote call made after the transaction holds a pooled connection for its whole duration.",
+      "check": "Is spring.jpa.open-in-view set to false in a production config the packet names? Does this operation call out after reading from the database, outside a transaction?",
+      "mitigations": [
+        {"name": "disabled in another file", "kind": "refutes", "text": "a production config sets spring.jpa.open-in-view=false"},
+        {"name": "no call after database access", "kind": "mitigates", "text": "the operation's remote calls happen before it touches the database, so the connection is not yet taken"}
+      ],
+      "cite": "the config line, or the config file that shows the key is missing; one remote call of the operation",
+      "fix": "Set spring.jpa.open-in-view=false and load what views need inside the transaction.",
+      "verify": "Make the remote service slow and send concurrent requests; the database pool must not run dry.",
+      "declares": []
+    },
+    "kafka-auto-commit": {
+      "inScope": true,
+      "hypothesis": "Kafka offsets are committed automatically on a timer, whether or not the listener finished; a crash between the commit and the end of processing loses those messages.",
+      "check": "Is enable-auto-commit really true for this consumer's factory, or does a container factory in code override it? Is the listener's work idempotent if the setting is changed to manual commits?",
+      "mitigations": [
+        {"name": "overridden in code", "kind": "refutes", "text": "a consumer factory in code sets ENABLE_AUTO_COMMIT_CONFIG to false for this listener"},
+        {"name": "loss accepted", "kind": "mitigates", "text": "the topic carries data the owner accepts to lose, such as metrics or telemetry"}
+      ],
+      "cite": "the config line that enables auto commit; the listener",
+      "fix": "Set enable-auto-commit=false and let the listener container commit after processing (the default ack mode), with retries and a dead-letter topic.",
+      "verify": "Kill the consumer while it processes a batch; after a restart every message must be processed.",
+      "declares": ["spring-kafka"]
+    },
+    "ddl-auto-in-production": {
+      "inScope": true,
+      "hypothesis": "Hibernate creates or alters tables at startup in a production config; schema changes happen unreviewed during deploys, while replicas still run the old code, and create or create-drop wipe data.",
+      "check": "Is the setting in a file production uses, or only in a local profile? Is the value update, create or create-drop? Does a migration tool own the schema as well?",
+      "mitigations": [
+        {"name": "local profile only", "kind": "refutes", "text": "the setting is in a profile used only for local runs or tests, and production sets validate or none"},
+        {"name": "overridden at deploy", "kind": "mitigates", "text": "the deployment overrides the value through an environment variable, recorded as an assumption"}
+      ],
+      "cite": "the config line with ddl-auto",
+      "fix": "Set ddl-auto to validate or none in production and own the schema with Flyway or Liquibase migrations.",
+      "verify": "Start the application against a copy of production with an entity change; the schema must not change.",
+      "declares": []
+    },
+    "feign-default-timeouts": {
+      "inScope": true,
+      "hypothesis": "Feign clients run on their default timeouts: ten seconds to connect and sixty to read; a slow partner ties up the calling thread for a minute per call, and request threads run out.",
+      "check": "Do the production configs the packet names set connect and read timeouts for these clients, by default or per client? Does a Request.Options bean or a time limiter in code set them?",
+      "mitigations": [
+        {"name": "timeouts in another file", "kind": "refutes", "text": "a production config sets spring.cloud.openfeign.client.config default or per-client timeouts"},
+        {"name": "options in code", "kind": "refutes", "text": "a Request.Options bean or a Feign builder in code sets connect and read timeouts"},
+        {"name": "time limiter", "kind": "mitigates", "text": "a time limiter or circuit breaker with a short timeout wraps the calls"}
+      ],
+      "cite": "the config file that lacks the timeouts; one Feign call",
+      "fix": "Set spring.cloud.openfeign.client.config.default.connect-timeout and read-timeout to a few seconds, and tighter per client where needed.",
+      "verify": "Make the partner answer after 30 seconds; the call must fail within the configured timeout.",
+      "declares": ["openfeign"]
+    },
+    "destructive-migration": {
+      "inScope": true,
+      "hypothesis": "The newest migration drops, renames or retypes a column or table that this operation writes; during a rolling deploy the replicas still on the old code fail against the new schema.",
+      "check": "Does the old code still read or write what the statement changes? Is the change split into expand and contract steps across releases? Has this migration been deployed already?",
+      "mitigations": [
+        {"name": "expand and contract", "kind": "refutes", "text": "the code that used the column was removed in an earlier release, so no running replica needs it"},
+        {"name": "deploy without old replicas", "kind": "mitigates", "text": "the deploy stops every old replica before migrating (recreate strategy), accepting downtime"},
+        {"name": "already deployed", "kind": "refutes", "text": "this migration is already applied in production, so the next deploy does not run it"}
+      ],
+      "cite": "the destructive statement; the write of this operation that touches the same table",
+      "fix": "Split the change: add the new shape first, deploy code that uses both, then drop the old one in a later release.",
+      "verify": "Run the old and the new version side by side against the migrated schema; both must keep working.",
       "declares": []
     },
     "no-hint": {

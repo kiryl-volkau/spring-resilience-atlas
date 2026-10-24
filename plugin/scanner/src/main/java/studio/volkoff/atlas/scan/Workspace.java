@@ -71,6 +71,9 @@ public final class Workspace {
         DECLARATIONS.put("spring-cloud-starter-gateway", "spring-cloud-gateway");
         DECLARATIONS.put("spring-cloud-gateway", "spring-cloud-gateway");
         DECLARATIONS.put("spring-session", "spring-session");
+        DECLARATIONS.put("spring-boot-starter-data-jpa", "data-jpa");
+        DECLARATIONS.put("spring-data-jpa", "data-jpa");
+        DECLARATIONS.put("spring-cloud-starter-openfeign", "openfeign");
     }
 
     public final Path root;
@@ -94,6 +97,10 @@ public final class Workspace {
     public final Set<String> servletMappings = new TreeSet<>();
     /** Base-path keys from main application config, values verbatim. */
     public final Map<String, String> basePaths = new java.util.TreeMap<>();
+    /** Main {@code application*} and {@code bootstrap*} config files, base files first. */
+    public final List<SourceEntry> configFiles = new ArrayList<>();
+    /** Flyway and Liquibase migrations under main resources. */
+    public final List<SourceEntry> migrationFiles = new ArrayList<>();
     private final Set<Path> outputNamedModules = new java.util.HashSet<>();
     private final List<Path> mainResourceDirs = new ArrayList<>();
 
@@ -278,22 +285,38 @@ public final class Workspace {
             Set.of("server.servlet.context-path", "spring.mvc.servlet.path", "spring.webflux.base-path");
     private static final Pattern YAML_KEY = Pattern.compile("^(\\s*)([\\w.\\-]+)\\s*:\\s*(.*)$");
 
+    private static final Pattern MIGRATION_PATH = Pattern.compile("(^|/)(db/migration|db/changelog|liquibase|flyway|migrations?)(/|$)");
+
     /** Reads the base-path keys from main {@code application*} config, base files before profile files. */
     private void readBasePaths() {
         List<Path> configs = new ArrayList<>();
         for (Path dir : mainResourceDirs) {
             for (Path d : List.of(dir, dir.resolve("config"))) {
                 try (java.util.stream.Stream<Path> files = Files.list(d)) {
-                    files.filter(f -> f.getFileName().toString().matches("application[-\\w]*\\.(yml|yaml|properties)"))
+                    files.filter(f -> f.getFileName().toString().matches("(application|bootstrap)[-\\w]*\\.(yml|yaml|properties)"))
                             .forEach(configs::add);
                 } catch (IOException ignored) {
                     // A missing config/ directory is the common case.
                 }
             }
+            try (java.util.stream.Stream<Path> files = Files.walk(dir, 8)) {
+                files.filter(f -> Files.isRegularFile(f) && f.getFileName().toString().matches(".+\\.(sql|xml|ya?ml|json)")
+                                && MIGRATION_PATH.matcher(root.relativize(f.getParent()).toString().replace('\\', '/')).find())
+                        .sorted(Comparator.comparing(this::rel))
+                        .forEach(f -> migrationFiles.add(new SourceEntry(f, rel(f), moduleOf(rel(f)), Origin.SOURCE)));
+            } catch (IOException | RuntimeException ignored) {
+                // An unreadable resource directory only loses migration rules.
+            }
         }
         configs.sort(Comparator.comparing((Path f) -> f.getFileName().toString().contains("-"))
                 .thenComparing(f -> rel(f)));
         for (Path f : configs) {
+            configFiles.add(new SourceEntry(f, rel(f), moduleOf(rel(f)), Origin.SOURCE));
+        }
+        for (Path f : configs) {
+            if (f.getFileName().toString().startsWith("bootstrap")) {
+                continue;
+            }
             try {
                 List<String> lines = Files.readAllLines(f, StandardCharsets.ISO_8859_1);
                 Map<String, String> values = f.toString().endsWith(".properties") ? properties(lines) : yaml(lines);

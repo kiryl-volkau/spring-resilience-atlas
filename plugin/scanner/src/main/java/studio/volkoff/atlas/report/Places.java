@@ -31,8 +31,10 @@ public final class Places {
     /** The rule code of an operation's sweep place: effects on its path, no rule fired. */
     public static final String NO_HINT = "no-hint";
     /** Rules whose evidence only matters inside a transaction: their place is the transaction's boundary. */
-    public static final Set<String> TX_RULES = Set.of("async-in-tx", "dual-write-in-tx", "remote-in-tx", "notification-in-tx", "event-in-tx");
-    private static final Set<String> CONTEXT_SIGNALS = Set.of(Signals.TX, Signals.IDEMPOTENCY, Signals.LOCK, Signals.RETRY);
+    public static final Set<String> TX_RULES = Set.of("async-in-tx", "dual-write-in-tx", "remote-in-tx", "notification-in-tx", "event-in-tx",
+            "lock-held-across-remote-call");
+    private static final Set<String> CONTEXT_SIGNALS = Set.of(Signals.TX, Signals.IDEMPOTENCY, Signals.LOCK, Signals.RETRY,
+            Signals.SWALLOWED, Signals.NO_TIMEOUT, Signals.UNBOUNDED_POOL, Signals.CONFIG);
 
     /** One operation with its effects and the assessment computed from them. */
     public record Input(Map<String, Object> ep, List<Map<String, Object>> effects, Risk.Assessment assessment) {
@@ -105,7 +107,9 @@ public final class Places {
                 }
                 reasons = List.of(new Risk.Reason(NO_HINT, Risk.Level.NONE, all));
             }
-            for (Risk.Reason r : reasons) {
+            List<Risk.Reason> all = new ArrayList<>(reasons);
+            all.addAll(in.assessment().moduleReasons());
+            for (Risk.Reason r : all) {
                 for (List<Integer> evidence : groups(r, in.effects())) {
                     if (evidence.isEmpty()) {
                         continue;

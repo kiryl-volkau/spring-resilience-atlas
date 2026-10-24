@@ -24,7 +24,53 @@ Flow: `BillingWebhookController.receiveStripeEvent` → `StripeWebhookService.ha
 | D9 | HTTP client without timeouts | `billing/config/BillingInfrastructureConfig.java:20` (`new RestTemplate()`), used at `billing/client/PaymentProviderClient.java:30` | Default connect/read timeouts are infinite. A hung provider pins SQS listener threads; the visibility timeout expires and the message is redelivered while the first attempt is still in flight (amplifies D6/D8). |
 | D10 | Poison message redelivered forever | `billing/messaging/InvoiceEventListener.java:26` (`readTree` throws), no DLQ/redrive or error handler in code | A malformed payload is retried until retention expires, consuming listener capacity. |
 
+D2 and D9 are what `executor-unbounded-queue` and `http-client-without-timeout` find: their
+place is the bean method that builds the executor or client, and it lists every operation that
+calls through it.
+
+## Ledger defects
+
+`billing/ledger/` posts invoices to an external ledger through the Feign client
+`billing/client/LedgerClient.java`. Every class holds one deliberate defect for a rule.
+
+| # | Rule | Evidence | Failure scenario |
+|---|---|---|---|
+| L1 | `after-commit-listener-writes-db` | `billing/ledger/LedgerPostingListener.java:18` | The listener runs after `InvoiceService` committed, with that transaction still bound; the `save` joins it and is never committed. |
+| L2 | `after-commit-listener-without-transaction` | `billing/ledger/LedgerCloseJob.java:25` publishes, `:28` listens | The job publishes outside any transaction; the `@TransactionalEventListener` has no `fallbackExecution`, so the day is never closed at the ledger. |
+| L3 | `read-only-tx-writes` | `billing/ledger/LedgerStatementService.java:11`, `:24` | The class is `readOnly`; the viewed-at change is not flushed. |
+| L4 | `lock-held-across-remote-call` | `billing/ledger/LedgerSyncService.java:31-32` | The posting row stays locked while the ledger answers. |
+| L5 | `consumer-swallows-failure` | `billing/ledger/LedgerSyncConsumer.java:25` | The listener logs the failure and returns; Kafka commits the offset and the posting is never synced. |
+| L6 | `remote-failure-swallowed` | `billing/ledger/LedgerSyncService.java:45` | A rejected adjustment is only logged; nothing retries it. |
+| L7 | `nested-requires-new-in-tx` | `billing/ledger/LedgerAuditService.java:18`, called from `LedgerSyncService.adjust` | Each adjustment holds two connections at once. |
+| L8 | `request-answers-ok-on-failure` | `billing/ledger/LedgerController.java:48`, `:51` | The bank's webhook gets 200 when the transfer was not recorded, so the bank never redelivers. |
+| L9 | `flush-on-shutdown` | `billing/ledger/LedgerBuffer.java:24-26` | Buffered postings are written only in `@PreDestroy`; a kill loses them. |
+| L10 | `startup-remote-call` | `billing/ledger/LedgerWarmup.java:19` | Startup fails while the ledger is down. |
+| L11 | `quartz-concurrent-execution` | `billing/ledger/LedgerReconciliationJob.java:10` | Without `@DisallowConcurrentExecution` two runs reconcile the same postings. |
+| L12 | `send-result-ignored` | `shared/patterns/PatternsController.java:49`, `shared/patterns/PatternAuditService.java:26` | The Kafka send's future is dropped; a failed send is only logged. |
+
+## Module defects
+
+These come from the module's config and migrations, not from a call path. Each forms one place
+at the config key or the migration file.
+
+| # | Rule | Evidence | Failure scenario |
+|---|---|---|---|
+| M1 | `graceful-shutdown-off` | `src/main/resources/application.yml` has no `server.shutdown`; the pom pins Spring Boot 3.3.5 | Deploys cut requests in flight. |
+| M2 | `kafka-auto-commit` | `src/main/resources/application.yml:20` | Offsets are committed on a timer, before processing ends. |
+| M3 | `ddl-auto-in-production` | `src/main/resources/application.yml:10` (`update`) | Hibernate alters the schema at startup. |
+| M4 | `feign-default-timeouts` (LOW) | no `spring.cloud.openfeign.client.config` timeouts | Ledger calls may wait 60 s. |
+| M5 | `destructive-migration` | `src/main/resources/db/migration/V2__ledger.sql:10` renames `billing_invoice.status` | Replicas on the old code fail while the deploy rolls. |
+
 ## Near-misses (not defects)
+
+- `src/main/resources/application.yml:8`: `spring.jpa.open-in-view: false`, so
+  `open-in-view-enabled` must not fire.
+- `src/main/resources/application-local.yml` sets graceful shutdown and `create-drop`; a local
+  profile says nothing about production, so neither changes M1 or M3.
+- `billing/events/InvoiceNotificationListener.java:21`: an after-commit listener that only
+  e-mails writes nothing, so L1's rule must not fire on it.
+- `billing/web/PaypalWebhookController.java`: the catch takes only `InvalidSignatureException`
+  and answers 400, so `request-answers-ok-on-failure` must not fire.
 
 - `resident/messaging/ResidentSyncPoller.java:64`: the message is deleted only after it was
   processed successfully; failures are left for redelivery.

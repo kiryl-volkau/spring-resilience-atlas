@@ -29,7 +29,13 @@ public final class TypeDecl {
     public final Set<String> referencedTypes;
     public final TypeDecl enclosing;
     public final List<TypeDecl> nested = new ArrayList<>();
+    /** Fields declared with an initialiser, static or not, by name. */
+    public final Map<String, FieldInit> fieldInits = new java.util.LinkedHashMap<>();
     public SourceFile file;
+
+    /** A field initialiser: its line and its source text as javac prints it. */
+    public record FieldInit(int line, String text) {
+    }
 
     public TypeDecl(String fqn, String simpleName, String displayName, Kind kind, boolean isAbstract, int line,
                     List<Anno> annos, List<String> superTypes, boolean hasSuperclass, List<FieldDecl> fields,

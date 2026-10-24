@@ -173,7 +173,7 @@ public final class GoldenTest {
                 System.out.println("RISK     no entry point " + cols[0] + " " + cols[1]);
                 continue;
             }
-            List<String> codes = a.reasons().stream().map(Risk.Reason::code).toList();
+            List<String> codes = java.util.stream.Stream.concat(a.reasons().stream(), a.moduleReasons().stream()).map(Risk.Reason::code).toList();
             if (!a.level().name().equals(cols[2])) {
                 problems++;
                 System.out.println("RISK LEVEL        " + cols[1] + " expected " + cols[2] + " got " + a.level() + " " + codes);
@@ -260,7 +260,7 @@ public final class GoldenTest {
         }
         Path audit = Files.createTempDirectory("audit-golden").resolve(".reliability").resolve("audit");
 
-        String plan1 = audit(fixture, atlas, audit, "plan", "--places", "PL-2ba53763,PL-55683365,PL-99da8683,PL-a39aeb08,PL-d0e0c22d,PL-4e2d7e2c,PL-6a66916e");
+        String plan1 = audit(fixture, atlas, audit, "plan", "--places", "PL-2ba53763,PL-55683365,PL-99da8683,PL-a39aeb08,PL-d0e0c22d,PL-4e2d7e2c,PL-6a66916e,PL-6f821a0f");
         String id1 = planId(plan1);
         try {
             audit(fixture, atlas, audit, "next", "R00000000T000000Z");
@@ -281,6 +281,7 @@ public final class GoldenTest {
         problems += expectPlace(places, "PL-d0e0c22d", "REFUTED", "CURRENT", null);
         problems += expectPlace(places, "PL-4e2d7e2c", null, "UNJUDGED", "partial");
         problems += expectPlace(places, "PL-6a66916e", "CONFIRMED", "CURRENT", null);
+        problems += expectPlace(places, "PL-6f821a0f", "REFUTED", "CURRENT", null);
         if (places.containsKey("PL-6a66916e") && !"MITIGATED".equals(places.get("PL-6a66916e").get("draftVerdict"))) {
             problems++;
             System.out.println("AUDIT a MITIGATED draft that names a remaining failure was not recorded as CONFIRMED from MITIGATED");

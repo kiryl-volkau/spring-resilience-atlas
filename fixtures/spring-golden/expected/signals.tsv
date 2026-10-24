@@ -1,6 +1,6 @@
 target	symbol	required	forbidden
-/api/billing/webhooks/stripe	BillingWebhookController.receiveStripeEvent	transactional,db-write@tx,message-send@tx,async-handoff@tx	idempotency-check,in-memory-state
-care-invoice-events	InvoiceEventListener.onInvoiceEvent	transactional,db-write@tx,external-call@tx	idempotency-check,in-memory-state,async-handoff
+/api/billing/webhooks/stripe	BillingWebhookController.receiveStripeEvent	transactional,db-write@tx,message-send@tx,async-handoff@tx,unbounded-executor	idempotency-check,in-memory-state,swallowed-failure
+care-invoice-events	InvoiceEventListener.onInvoiceEvent	transactional,db-write@tx,external-call@tx,no-timeout,config	idempotency-check,in-memory-state,async-handoff,swallowed-failure
 LateFeeAccrualJob	LateFeeAccrualJob.execute	lock
 0 15 3 * * *	PharmacyStockScheduler.reorderLowStock	lock
 care.pharmacy.medication-orders	MedicationOrderConsumer.onMedicationOrder	retry
@@ -12,4 +12,7 @@ VIEW:save	ResidentAccountPortlet.saveAccount	in-memory-state
 /api/patterns/tx-template	PatternsController.txTemplate	transactional,db-write@tx,message-send@tx	
 /api/patterns/overload	PatternsController.overload	self-invocation,external-call	async-handoff
 /api/patterns/fire	PatternsController.fire	async-handoff	
-/api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	transactional,db-write@tx	idempotency-check,message-send,async-handoff
+/api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	transactional,db-write@tx	idempotency-check,message-send,async-handoff,swallowed-failure
+care.billing.ledger-postings	LedgerSyncConsumer.onPostingRequested	swallowed-failure,lock@tx,external-call@tx,db-write@tx,config	idempotency-check
+/api/billing/ledger/webhooks/bank-transfer	LedgerController.receiveBankTransfer	swallowed-failure,db-write@tx	
+/api/billing/ledger/{invoiceId}/adjustments	LedgerController.adjust	swallowed-failure,transactional,external-call@tx	

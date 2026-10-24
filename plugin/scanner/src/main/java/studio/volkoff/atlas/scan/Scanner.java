@@ -84,12 +84,13 @@ public final class Scanner {
         Files.createDirectories(out);
         writeJsonl(out.resolve("entrypoints.jsonl"), entryPoints.stream().map(EntryPoint::toMap).toList());
         writeJsonl(out.resolve("types.jsonl"), typeRecords(index));
+        ModuleFacts facts = new ModuleFacts(ws, AppConfig.read(ws), index);
         EffectAnalyzer analyzer = new EffectAnalyzer(index, module -> ws.declaresFor(module, "spring-session"),
-                ws.declares("spring-session"));
+                ws.declares("spring-session"), facts::builderTimeouts);
         List<EffectAnalyzer.Result> effects = new ArrayList<>();
         List<Map<String, Object>> effectRows = new ArrayList<>();
         for (EntryPoint e : entryPoints) {
-            EffectAnalyzer.Result r = analyzer.analyse(e);
+            EffectAnalyzer.Result r = facts.attach(e, analyzer.analyse(e));
             effects.add(r);
             effectRows.add(r.toMap(e.id));
         }
@@ -105,14 +106,16 @@ public final class Scanner {
     }
 
     /**
-     * SHA-256 over the path and content hash of every main-source file the scan reads, sorted by
-     * path: equal values mean the atlas was built from exactly these sources, whatever git says.
-     * An unreadable file contributes its path only.
+     * SHA-256 over the path and content hash of every main-source, application config and
+     * migration file the scan reads, sorted by path: equal values mean the atlas was built from
+     * exactly these files, whatever git says. An unreadable file contributes its path only.
      */
     public static String sourcesHash(Workspace ws) {
         try {
             MessageDigest all = MessageDigest.getInstance("SHA-256");
             List<Workspace.SourceEntry> sorted = new ArrayList<>(ws.sources);
+            sorted.addAll(ws.configFiles);
+            sorted.addAll(ws.migrationFiles);
             sorted.sort(Comparator.comparing(Workspace.SourceEntry::relPath));
             for (Workspace.SourceEntry e : sorted) {
                 all.update(e.relPath().getBytes(StandardCharsets.UTF_8));

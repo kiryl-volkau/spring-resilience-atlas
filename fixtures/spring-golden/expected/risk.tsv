@@ -1,17 +1,27 @@
 target	symbol	level	required	forbidden
-/api/billing/webhooks/stripe	BillingWebhookController.receiveStripeEvent	HIGH	handoff-after-ack,async-in-tx,dual-write-in-tx,webhook-not-idempotent	webhook-sync-remote
-care-invoice-events	InvoiceEventListener.onInvoiceEvent	MEDIUM	remote-in-tx,consumer-not-idempotent	event-in-tx,dual-write-in-tx
+/api/billing/webhooks/stripe	BillingWebhookController.receiveStripeEvent	HIGH	handoff-after-ack,async-in-tx,dual-write-in-tx,webhook-not-idempotent,executor-unbounded-queue,graceful-shutdown-off	webhook-sync-remote,request-answers-ok-on-failure
+care-invoice-events	InvoiceEventListener.onInvoiceEvent	MEDIUM	remote-in-tx,consumer-not-idempotent,http-client-without-timeout,destructive-migration	event-in-tx,dual-write-in-tx,consumer-swallows-failure
 /api/patterns/after-commit	PatternsController.afterCommit	MEDIUM	dual-write	dual-write-in-tx
-/api/patterns/tx-template	PatternsController.txTemplate	HIGH	dual-write-in-tx	
+/api/patterns/tx-template	PatternsController.txTemplate	HIGH	dual-write-in-tx,send-result-ignored	
 /api/patterns/overload	PatternsController.overload	MEDIUM	proxy-bypassed	handoff-after-ack,notification-handoff
 /api/patterns/parallel	PatternsController.parallel	NONE		handoff-after-ack
 /api/patterns/fire	PatternsController.fire	HIGH	handoff-after-ack	
 /api/patterns/wrapped	PatternsController.wrapped	LOW	async-response	handoff-after-ack
-/api/patterns/stream	PatternsController.stream	LOW	async-response	handoff-after-ack
+/api/patterns/stream	PatternsController.stream	LOW	async-response	handoff-after-ack,executor-unbounded-queue
 /api/patterns/pumped	PatternsController.pumped	MEDIUM	dual-write	handoff-after-ack
-LateFeeAccrualJob	LateFeeAccrualJob.execute	NONE		job-without-lock
+LateFeeAccrualJob	LateFeeAccrualJob.execute	NONE		job-without-lock,quartz-concurrent-execution
 0 15 3 * * *	PharmacyStockScheduler.reorderLowStock	NONE		job-without-lock
 VIEW:save	ResidentAccountPortlet.saveAccount	MEDIUM	shared-field-write	
-/api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	MEDIUM	webhook-not-idempotent	webhook-sync-remote,dual-write-in-tx,handoff-after-ack
-/api/billing/admin/invoices/{invoiceId}/charge	BillingAdminController.retryCharge	MEDIUM	remote-in-tx	dual-write-in-tx
+/api/billing/webhooks/paypal	PaypalWebhookController.receivePaypalEvent	MEDIUM	webhook-not-idempotent	webhook-sync-remote,dual-write-in-tx,handoff-after-ack,request-answers-ok-on-failure
+/api/billing/admin/invoices/{invoiceId}/charge	BillingAdminController.retryCharge	MEDIUM	remote-in-tx,http-client-without-timeout,destructive-migration	dual-write-in-tx,open-in-view-enabled,lock-held-across-remote-call
 /api/billing/admin/invoices/{invoiceId}/charge	BillingAdminController.cancelCharge	NONE		remote-in-tx
+InvoiceIssuedEvent	LedgerPostingListener.onInvoiceIssued	HIGH	after-commit-listener-writes-db,ddl-auto-in-production	async-listener
+InvoiceIssuedEvent	InvoiceNotificationListener.onInvoiceIssued	NONE		after-commit-listener-writes-db
+0 0 1 * * *	LedgerCloseJob.closeDay	HIGH	after-commit-listener-without-transaction	job-without-lock
+/api/billing/ledger/{invoiceId}/statement	LedgerController.issueStatement	MEDIUM	read-only-tx-writes,graceful-shutdown-off	read-verb-writes
+care.billing.ledger-postings	LedgerSyncConsumer.onPostingRequested	HIGH	consumer-swallows-failure,lock-held-across-remote-call,remote-in-tx,consumer-not-idempotent,kafka-auto-commit,feign-default-timeouts	remote-failure-swallowed
+LedgerBuffer	LedgerBuffer.flush	MEDIUM	flush-on-shutdown	background-thread
+LedgerWarmup	LedgerWarmup.run	MEDIUM	startup-remote-call	
+LedgerReconciliationJob	LedgerReconciliationJob.execute	MEDIUM	quartz-concurrent-execution,job-without-lock	
+/api/billing/ledger/{invoiceId}/adjustments	LedgerController.adjust	MEDIUM	nested-requires-new-in-tx,remote-failure-swallowed,remote-in-tx	request-answers-ok-on-failure
+/api/billing/ledger/webhooks/bank-transfer	LedgerController.receiveBankTransfer	HIGH	request-answers-ok-on-failure,webhook-not-idempotent	remote-failure-swallowed
