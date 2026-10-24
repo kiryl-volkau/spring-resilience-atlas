@@ -10,6 +10,10 @@ It then follows each operation's code path and records what it writes, sends and
 The report shows where to look first, and the audit skills open only the code needed to
 prove or disprove one hypothesis for one flow.
 
+A traced flow gets its own page: a sequence diagram across the entry points it crosses, its
+business parts and, after a deep audit, each way it breaks, drawn on the arrow where it breaks
+with the story step by step, a fix and a test.
+
 ![The report on the synthetic golden fixture](assets/report.png)
 
 ## Install
@@ -35,7 +39,7 @@ need a local shell and a JDK, so they work in Claude Code, not in claude.ai chat
 | `/resilience-audit:entrypoint-catalog` | Answers questions about endpoints, consumers, jobs and listeners from the atlas instead of grepping |
 | `/resilience-audit:domain-cartographer` | Maps packages to business domains so queries and audits can filter by domain |
 | `/resilience-audit:critical-flow-tracer` | Traces one business flow across the entry points it reaches into a flow where every step has file-and-line evidence, drawn as a page with a sequence diagram |
-| `/resilience-audit:flow` | Lists the traced flows or opens one flow's page: the diagram, its business parts, the hints on it and, after a deep audit, the ways it breaks |
+| `/resilience-audit:flow` | Lists the traced flows or opens one flow's page: the diagram, its business parts, the hints on it and, after a deep audit, the ways it breaks. `--snapshot` records the flows and the deep findings, and `--diff` says what was fixed, what is new and what changed without being audited again |
 | `/resilience-audit:audit` | Checks the report's high and medium hints with a cheap model, one hypothesis per place in the code. It first prints the plan and its estimated cost and spends nothing; `--yes <plan-id>` runs exactly that plan within a hard cap. Filters such as `--package` or `--rule` check a selection; `--level LOW` adds the low hints and `--level NONE` sweeps operations without a hint that still write, send or call out. Results appear in the report and in `.reliability/backlog.md`. `--deep` audits whole flows instead: it writes failure scenarios on a traced flow, has a second model try to disprove the severe ones, and draws them on the flow's page, with the same plan, estimate and `--yes` gate |
 
 A level on the report (High, Medium, Low) is a code hint that says where to look first. It is
@@ -47,6 +51,23 @@ Most hints come from an operation's call path. A few come from its module instea
 Feign timeouts) and the newest migration. Such a place is the config key or the migration
 file, it lists every operation the fact reaches, and it does not raise their own levels.
 
+## Flow pages
+
+`critical-flow-tracer` follows one business flow across the entry points it reaches, such as a
+webhook, the queue it feeds and the consumer, with file-and-line evidence for every step. The
+scanner draws it as an offline page in `.reliability/flows/`: transactions, threads, messages and
+the writes that are not durable yet, the flow's business parts, and the flow-level patterns that
+match it, such as an external effect inside a local transaction.
+
+`audit --deep` writes the ways the flow breaks as short stories on its own steps, and a second
+model tries to disprove the severe ones. Each story marks the step where the flow breaks and
+says whether one step change closes it or the design has to change. A story that another defect
+stops today is kept as blocked by that defect, not dropped as disproved.
+
+![A flow page on the synthetic golden fixture, with a verified failure scenario selected](assets/flow.png)
+
+## Costs
+
 ### Cost of the quick check
 
 The report costs nothing beyond one short Haiku turn. The quick check runs one `place-checker`
@@ -57,19 +78,16 @@ plugin's test application, 40 places cost $0.10 on Haiku, close to the estimate.
 
 ### Cost of the deep audit
 
-A deep audit costs more because it uses strong models. On the plugin's test application,
-one flow cost $3.58: the failure scenarios on Fable $2.72, the verification and the
-orchestration on Opus. Tracing a flow first adds about $1 on Opus. The plan prints its estimate
-per flow before anything runs, and `--deep-model opus` writes the scenarios on Opus for
-accounts without Fable. The plan audits at most three flows unless you set `--max-flows`.
+A deep audit costs more because it uses strong models. On the plugin's test application, one
+flow of 19 steps cost $3.58: the failure scenarios on Fable $2.72, the rest on Opus. On a real
+service of about 600 Java files, tracing a flow of 33 steps cost $0.98 on Opus, and its deep
+audit cost $4.23 against an estimate of $3.23, with three severe stories verified. The plan
+prints its estimate per flow before anything runs, and `--deep-model opus` writes the scenarios
+on Opus for accounts without Fable. The plan audits at most three flows unless you set
+`--max-flows`.
 
 The cap applies to the plugin's estimate of each batch or deep step, counted when it starts. The
 plugin cannot see your bill, so the real cost can differ from the estimate.
-
-The agents can read files and write their own draft under `.reliability/audit/drafts/`; they
-cannot run commands. They are told never to modify your code, but Claude Code cannot restrict
-a subagent's writes by path, so review the session's file changes as usual. Claude Code may ask
-once per session to allow those draft writes.
 
 ## What the plugin runs
 
@@ -83,6 +101,12 @@ once per session to allow those draft writes.
 - **No network.** Nothing is downloaded or sent anywhere, and there is no telemetry. Claude
   reads the scanner's output, and audit skills open the files needed for one hypothesis, as
   in any Claude Code session.
+- **Agents with narrow tools.** The checking agents (`place-checker`, `scenario-author`,
+  `flow-verifier`) can only read files and write their own draft under
+  `.reliability/audit/drafts/`. The `flow-tracer` also runs the plugin's atlas queries and
+  writes its draft under `.reliability/flows/drafts/`. Every agent is told never to modify your
+  code, but Claude Code cannot restrict a subagent's writes by path, so review the session's
+  file changes as usual. Claude Code may ask once per session to allow those draft writes.
 
 ## License
 

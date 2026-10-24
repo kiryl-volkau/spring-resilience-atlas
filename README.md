@@ -20,7 +20,8 @@ architecture and gives different coverage on every run. This plugin instead:
 > check work: scanner, query CLI, the report, the phase-1 skills and the `audit` skill, which
 > checks every high and medium hint with a cheap model. Traced flows get a page with a sequence
 > diagram. The deep audit (`audit --deep`), which writes failure scenarios on a traced flow and
-> has a second model try to disprove them, is new and measured only on the golden fixture.
+> has a second model try to disprove them, is new: it was measured on the golden fixture and on
+> one flow of a real service.
 
 ## Install
 
@@ -55,6 +56,11 @@ need a local shell and a JDK, so they work in Claude Code, not in claude.ai chat
 - **No network.** Nothing is downloaded or sent anywhere, and there is no telemetry. Claude
   reads the scanner's output, and audit skills open the files needed for one hypothesis, as
   in any Claude Code session.
+- **Agents with narrow tools.** The checking agents (`place-checker`, `scenario-author`,
+  `flow-verifier`) can only read files and write their own draft under
+  `.reliability/audit/drafts/`. The `flow-tracer` also runs the plugin's atlas queries and
+  writes its draft under `.reliability/flows/drafts/`. Every agent is told never to modify the
+  application's code.
 
 ## How it works
 
@@ -100,6 +106,7 @@ Written into the audited repository under `.reliability/atlas/`:
 | `types.jsonl` | every type with supertypes, stereotypes and annotations, for interface → implementation lookups | built |
 | `domains.jsonl` | business domains as package prefixes, with confidence; written by `domain-cartographer`, corrected by people | built |
 | `effects.jsonl` | per entry point, the effects on its call path (entry method, its class, up to three injected beans) with file:line: async hand-offs, in-memory state, local files, DB writes, message sends, remote calls, events, transactions, retries, locks, idempotency checks | built |
+| `links.jsonl` | candidate links between entry points: a send and the consumers of its destination, an event and its listeners, an outbound call and the same provider's webhooks; the flow tracer decides which ones a flow crosses | built |
 | `transactions.jsonl` | `@Transactional` boundaries and their attributes | planned |
 | `persistence.jsonl` | repositories, entity writes, `JdbcTemplate` usage | planned |
 | `message-producers.jsonl` | SQS / Kafka / Rabbit sends | planned |
@@ -165,6 +172,28 @@ it lists every operation the fact reaches without raising their levels.
 audit verdicts and findings in `.reliability/audit/`, and the generator computes every colour
 from those records. The skill costs about $0.01 on Haiku.
 
+## Flow pages
+
+`/resilience-audit:critical-flow-tracer` follows one business flow across the entry points it
+reaches, such as a webhook, the queue it feeds and the consumer, and writes every step with
+file-and-line evidence. The scanner checks the draft against the tree and draws the flow as an
+offline page in `.reliability/flows/`:
+
+- a sequence diagram with transactions, threads, messages and the writes that are not durable
+  yet; past a dozen participants it folds beans into their entry point and tables into one column;
+- the flow's business parts, their outcomes and the state each one owns;
+- the flow-level patterns that match it, such as an external effect inside a local transaction;
+- after `audit --deep`, each way the flow breaks, drawn on the arrow where it breaks, with the
+  story step by step, whether one step change closes it or the design has to change, a fix and a
+  test.
+
+![A flow page on the synthetic golden fixture, with a verified failure scenario selected](plugin/assets/flow.png)
+
+`/resilience-audit:flow --snapshot` records the flows and the deep findings in
+`.reliability/history/`, and `--diff` compares two snapshots, or one with the live state: what
+was fixed, what is new, what is still open and what changed without being audited again. The
+report links each traced flow and says what changed since the last snapshot.
+
 ## The quick check
 
 `/resilience-audit:audit` turns hints into verdicts without one agent per operation. The work
@@ -216,8 +245,10 @@ they led to.
 Every finding is an evidence packet, not an opinion: rule id, domain, flow, a concrete
 failure scenario, file/symbol evidence, existing mitigations, blast radius, recommendation,
 and a verification procedure. **Severity** (how bad if true) and **confidence** (how sure
-it is real) are separate fields. Candidate findings are high-recall; a separate verifier
-tries to disprove each one before it reaches the backlog.
+it is real) are separate fields. Deep-audit findings start as candidates, and a verifier on a
+different model tries to disprove the severe ones. A disproof has to cite code the scanner can
+check, or it is recorded as doubt; a story that another defect stops today is recorded as
+blocked by that defect, not as disproved.
 
 "No findings" is never reported as "safe" — the coverage ledger records which flows and
 which audit profiles actually ran against which commit.
@@ -254,9 +285,9 @@ plugin/                             the plugin users install
   agents/flow-verifier.md           the deep audit's verifier, which tries to disprove them
   scanner/                          atlas builder and query CLI: dependency-free Java, run from source by Launch.java
   schemas/                          entry-point rules, and entrypoint/domain/flow/scenario/finding JSON schemas
-  references/                       the query CLI's commands and what the atlas cannot see
+  references/                       the query CLI's commands, the flow pages and what the atlas cannot see
   evals/                            claude plugin eval cases
-  assets/                           icon and screenshot
+  assets/                           icon and screenshots
 .claude-plugin/marketplace.json     lists plugin/ for installation
 pom.xml                             development build of the scanner jar
 fixtures/spring-golden/             synthetic Spring app with hand-written expected results
@@ -273,8 +304,9 @@ These were settled by a parser and corpus spike on 2026-10-22:
   JavaParser, javac never lags the target's Java version.
 - **Storage.** JSONL that skills never load whole. The CLI prints a summary line, then TSV
   projections, 50 rows by default.
-- **Models.** Haiku for the mechanical catalog skills and the quick check, Sonnet for domain mapping, Opus for
-  flow tracing. Fable 5.1 is reserved for the audit reasoning that comes next.
+- **Models.** Haiku for the mechanical catalog skills, the quick check and the deep audit's
+  loop, Sonnet for domain mapping, Opus for flow tracing and for verifying failure scenarios,
+  and Fable 5.1 for writing them, so that a different model checks the author.
 
 Still open:
 
