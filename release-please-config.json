@@ -9,7 +9,7 @@
       "release-type": "simple",
       "extra-files": [
         {"type": "json", "path": "plugin/.claude-plugin/plugin.json", "jsonpath": "$.version"},
-        {"type": "pom", "path": "pom.xml"},
+        {"type": "generic", "path": "pom.xml"},
         {"type": "generic", "path": "plugin/scanner/src/main/java/studio/volkoff/atlas/scan/Scanner.java"}
       ]
     }
