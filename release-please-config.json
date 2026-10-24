@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "bdc35557a5585452996a775c4f4d78219e603cba",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "pull-request-title-pattern": "chore: release ${version}",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "extra-files": [
+        {"type": "json", "path": "plugin/.claude-plugin/plugin.json", "jsonpath": "$.version"},
+        {"type": "pom", "path": "pom.xml"},
+        {"type": "generic", "path": "plugin/scanner/src/main/java/studio/volkoff/atlas/scan/Scanner.java"}
+      ]
+    }
+  }
+}

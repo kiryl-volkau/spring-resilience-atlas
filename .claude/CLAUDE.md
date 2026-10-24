@@ -23,6 +23,10 @@ spikes and reviews; it is git-ignored and exists only on the author's machine.
 - Scripts must run on Windows, macOS and Linux.
 - The plugin targets Anthropic's directory, which holds for manual review any file over
   256 KiB (images excepted), any binary other than an image or font, and more than 512 files.
+- Releases go through release-please (`release-please-config.json`). It keeps a release PR open
+  that bumps the version in `plugin.json`, `pom.xml` and `Scanner.java` and writes `CHANGELOG.md`;
+  merging it tags `vX.Y.Z` and publishes the GitHub Release. Never bump a version by hand, and
+  keep `version` out of `marketplace.json`. Only `feat`, `fix` and breaking changes make a release.
 - Test against a real Spring repository with `claude --plugin-dir <this repo>/plugin`; skills are
   invoked as `/resilience-audit:<skill>`, and `/reload-plugins` picks up edits.
 - The evaluation corpus and its rules are in `evals/corpus.md`, which is git-ignored because
