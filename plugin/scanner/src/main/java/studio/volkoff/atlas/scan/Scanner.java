@@ -36,7 +36,7 @@ import java.util.TreeMap;
 /** Builds {@code .reliability/atlas/} for a repository: manifest, entry points and types. */
 public final class Scanner {
 
-    public static final String VERSION = "0.4.0";
+    public static final String VERSION = "0.5.0";
 
     private static final Set<String> STEREOTYPES = Set.of("Controller", "ControllerAdvice", "RestControllerAdvice",
             "Service", "Component", "Repository", "Configuration", "SpringBootApplication", "Entity", "Table",

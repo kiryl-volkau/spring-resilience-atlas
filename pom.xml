@@ -6,7 +6,7 @@
 
     <groupId>studio.volkoff</groupId>
     <artifactId>resilience-atlas</artifactId>
-    <version>0.4.0</version>
+    <version>0.5.0</version>
     <packaging>jar</packaging>
 
     <!-- No dependencies on purpose: the jar must run on any JDK 17+ without a download,
